@@ -1,0 +1,304 @@
+---
+title: "Script for downstream analysis of MiSeq amplicon sequencing of the Run1 Concentration"
+author: "Gontran Arnault"
+date: "2022, July 13th"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r directory, echo=FALSE}
+library(metagMisc)
+
+setwd("~/Documents/tmp/")
+```
+
+# Data information
+
+
+# 1 - Sequence analyses 
+
+## 1.1 - Remove primers with cutadapt v1.15
+
+This step is performed outside the R environment, need to have a folder with all the .gz files and cutadapt installed
+
+```
+gzip -d *.gz # to unzip GZ files
+ls *.gz | awk -F"_" {'print $1"_"$2"_"$3"_"'} | sort | uniq > group #to create a list of the fastq files to be analysed 
+for i in `cat group`; do ~/.local/bin/cutadapt --discard-untrimmed -o $i.gyrB.R1.fq -p $i.gyrB.R2.fq -g MGNCCNGSNATGTAYATHGG -G ACNCCRTGNARDCCDCCNGA -e 0.1  -O 20 $i*R1_001.fastq.gz $i*R2_001.fastq.gz; done
+```
+
+## 1.2 - Convert fastq to ASV table (dada2)
+
+```{r echo=FALSE, eval = FALSE}
+library("dada2"); packageVersion("dada2")
+#Adapt from https://benjjneb.github.io/dada2/tutorial.html
+path <- "/Users/garnault-admin/Documents/Thèse/Data/Run3_CC68_Richness/Fastq/" #directory containing the fastq files after unzipping
+list.files(path)
+fnFs <- sort(list.files(path, pattern="gyrB.R1.fq", full.names = TRUE)) # Forward and reverse fastq filenames have format: SAMPLENAME_R1_001.fastq and SAMPLENAME_R2_001.fastq
+fnRs <- sort(list.files(path, pattern="gyrB.R2.fq", full.names = TRUE))
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1) # Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+plotQualityProfile(fnFs[50:55]) #select 200 
+plotQualityProfile(fnRs[50:55]) #select 150 
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+# standard filtering parameters: maxN=0 (DADA2 requires no Ns), truncQ=2, rm.phix=TRUE and maxEE=2. The maxEE parameter sets the maximum number of “expected errors” allowed in a read, which is a better filter than simply averaging quality scores.
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(200,150),
+                     maxN=0, maxEE=c(1,1), truncQ=5, rm.phix=TRUE,
+                     compress=TRUE, multithread=TRUE) 
+head(out)
+
+# Learn the Error Rates
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+plotErrors(errF, nominalQ=TRUE) #visualize the estimated error rates, estimated error rates (black line) have to fit to the observed rates (points)
+
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE) #without pooling or pseudo-pooling (no need to detect rare ASV)
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+dadaFs[[1]] #Inspecting the returned dada-class object
+
+
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE) #merge the forward and reverse reads together to obtain the full denoised sequences
+#By default, merged sequences are only output if the forward and reverse reads overlap by at least 12 bases, and are identical to each other in the overlap region (but these conditions can be changed via function arguments).
+
+head(mergers[[1]]) # Inspect the merger data.frame from the first sample
+
+seqtab <- makeSequenceTable(mergers) #Construct an amplicon sequence variant table (ASV) table
+dim(seqtab)
+table(nchar(getSequences(seqtab))) #Inspect distribution of sequence lengths
+
+#remove non-target-length sequences from your sequence table; Since gyrB is a protein-coding genes only triplets should be conserved (244-247-250-253-256-259-262-265-268)
+seqtab244 <- seqtab[,nchar(colnames(seqtab)) %in% 244]
+seqtab247 <- seqtab[,nchar(colnames(seqtab)) %in% 247]
+seqtab250 <- seqtab[,nchar(colnames(seqtab)) %in% 250]
+seqtab253 <- seqtab[,nchar(colnames(seqtab)) %in% 253]
+seqtab256 <- seqtab[,nchar(colnames(seqtab)) %in% 256]
+seqtab259 <- seqtab[,nchar(colnames(seqtab)) %in% 259]
+seqtab262 <- seqtab[,nchar(colnames(seqtab)) %in% 262]
+seqtab265 <- seqtab[,nchar(colnames(seqtab)) %in% 265]
+seqtab268 <- seqtab[,nchar(colnames(seqtab)) %in% 268]
+#Merge all files
+seq.final <- cbind(seqtab244, seqtab247, seqtab250, seqtab253, seqtab256, seqtab259, seqtab262, seqtab265, seqtab268) 
+dim(seq.final)
+plot(table(nchar(getSequences(seq.final)))) #plot the distribution of sequence lengths
+sum(seq.final)/sum(seqtab) #we keep 99,91% of the sequence
+
+#Detect/Remove chimera
+seqtab.nochim <- removeBimeraDenovo(seq.final, method="consensus", multithread=TRUE, verbose=TRUE)
+
+ncol(seqtab.nochim)/ncol(seq.final) #chimeras make up about 63,71% of the merged sequence variants
+(1-sum(seqtab.nochim)/sum(seq.final)) #abundances of those variants account for only about 6,2% of the merged sequence reads
+
+#Detect stop codons
+#Summary to look at the number of reads that made it through each step in the pipeline
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+
+#Sort ASV by descending order
+asvgyrB <- seqtab.nochim[, order(colSums(-seqtab.nochim))]
+
+library("metagMisc")
+asvgyrB_md5=dada_to_fasta(seqtab.nochim,out="DADA2.fasta",hash="md5")
+
+saveRDS(asvgyrB, "ASV_gyrB_run2.rds")
+
+#Taxonomic affiliation
+taxa.g_run2 <- assignTaxonomy(asvgyrB, "~/Documents/Thèse/Data/database/train_set_gyrB_v5.fa.gz", multithread=TRUE,tryRC=TRUE)
+taxa.print.g <- taxa.g_run2 # Removing sequence rownames for display only
+head(taxa.g_run2)
+saveRDS(taxa.g_run2, "gyrB_taxo_run2.rds")
+write.csv2(taxa.g_run2,"~/Documents/Thèse/Analyses/SynCom/Run2/tax_table_post_affiliation_run2.csv")
+```
+
+```
+perl Documents/Scripts/fastaGenerateMD5.pl -f
+Documents/Genome_sequences/16S-gyrB/sequences_gyrB.fasta -ot
+Documents/test_gyrB
+```
+
+voir library digest 
+
+
+## 1.3 - Construct phyloseq object
+
+```{r phyloseq, echo=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+design <- read.csv("/Users/garnault-admin/Documents/Thèse/Analyses/SynCom/Analyse_metabarcoding/Run2_richness/Design_runRichness.csv", sep = ";",  check.names=FALSE, row.names=1)
+asvgyrB <- readRDS("ASV_gyrB_run2.rds")
+taxgyrB <- readRDS("gyrB_taxo_run2.rds")
+psgyrB_0 <- phyloseq(tax_table(taxgyrB), sample_data(design),
+                     otu_table(asvgyrB, taxa_are_rows = FALSE)) # 18945 taxa and 384 samples
+```
+
+Adding refseq object 
+
+```{r, echo=FALSE}
+#Rename ASV
+dna.gyrB <- Biostrings::DNAStringSet(taxa_names(psgyrB_0))
+names(dna.gyrB) <- taxa_names(psgyrB_0)
+psgyrB_0<- merge_phyloseq(psgyrB_0, dna.gyrB)
+
+```
+
+Exporting tax table and otu table to check for contaminants
+
+```{r}
+write.csv(as.data.frame(t(otu_table(psgyrB_0))),file="/Users/garnault-admin/Documents/Thèse/Data/Run3_CC68_Richness/otu_tablerun_richness.csv")
+write.csv(as.data.frame(tax_table(psgyrB_0)), file="/Users/garnault-admin/Documents/Thèse/Data/Run3_CC68_Richness/tax_table_richness.csv")
+```
+
+```{r}
+#Soil conta
+Microbacterium_barkeri="CTCCACGGGTCCGCGCGGTCTGCACCACCTGGTGTACGAGATCGTCGACAACTCGGTCGACGAGGCCCTCGCGGGGTACGCCGACACGATCCTGGTGACGATGCTCGCCGACGGCGGGGTCCGCGTGGTGGACAACGGCCGTGGCATCCCCGTCGATCCGCACTCCTCCGACCCGAACAAGTCGACGGTCGAGGTCGTGCTGACGATCCTGCACGCCGGCGGCAAGTTCGGCGGCGGCGCCTACGCGGTC"
+Shigella_unclassified="CGACACGGATGACGGCACCGGTCTGCACCACATGGTATTCGAGGTGGTAGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGAAATTATCGTCACCATTCACGCCGATAACTCTGTCTCTGTACAGGATGACGGGCGCGGCATTCCGACCGGTATTCACCCGGAAGAGGGCGTATCGGCGGCGGAAGTGATCATGACCGTTCTGCACGCAGGCGGTAAATTTGACGATAACTCCTATAAAGTG"
+
+#PCR/DNA extraction conta
+Pseudomonas_fluorescens="TGATACCGATGATGGCAGCGGTCTGCACCACATGGTGTTCGAGGTGGTCGATAACTCGATCGACGAAGCTTTGGCCGGTCACTGCGACGACATCAGTATCATCATCCACCCGGACGAATCCATCACCGTGCGCGACAACGGTCGCGGCATCCCGGTAGATGTGCATAAAGAAGAAGGCGTTTCGGCGGCAGAGGTCATCATGACCGTGCTCCACGCCGGCGGTAAGTTCGACGACAACTCCTACAAAGTA"
+Diaphorobacter_unclassified1="CGATACGTCGGACGGCACAGGCCTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGACGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCCATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCGCTGACCGAACTGCACGCCGGTGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+Acinetobacter_junii="GGATACCGATGATGGTACAGGTTTGCACCATATGGTGTTTGAGGTGGTGGATAACGCGATTGATGAAGCACTAGCAGGTCACTGTGATGAAATTCTAGTGACGATTCATGAAGATGAATCTGTTAGCGTATCTGATAATGGTCGTGGTATTCCGACAGATATTCACCCTGAAGAAGGTGTATCTGCGGCAGAAGTGATTCTGACTATCCTGCATGCAGGTGGTAAATTTGATGACAACAGTTATAAAGTT"
+Diaphorobacter_unclassified2="CGATACGTCGGACGGCACAGGCCTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGACGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCCATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCGCTGACCGAGCTGCACGCCGGCGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+Alicycliphilus_unclassified="CGATACGTCCGACGGCACCGGCCTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGACGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCGATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCCCTGACCGAGCTGCACGCCGGCGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+
+Shigella_unclassified="CGACACGGATGACGGCACCGGTCTGCACCACATGGTATTCGAGGTGGTAGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGAAATTATCGTCACCATTCACGCCGATAACTCTGTCTCTGTACAGGATGACGGGCGCGGCATTCCGACCGGTATTCACCCGGAAGAGGGCGTATCGGCGGCGGAAGTGATCATGACCGTTCTGCACGCAGGCGGTAAATTTGACGATAACTCCTATAAAGTG"
+Thermomonas_fusca="CGACGTCCATGACGGCACCGGCCTGCACCATATGGTGTTCGAAGTGGTCGACAACTCGGTGGACGAGGCGCTGGCCGGGCATGCCGACAACATCATCGTCACCATCCATGCCGACGGCTCGGTCAGCGTGTCCGACAACGGCCGCGGCATCCCGGTGGACATCCACAAGGAAGAAGGCGTTTCGGCGGCCGAGGTGATCCTCACCGTGCTGCATGCCGGCGGCAAGTTCGACGACAACAGCTACAAGGTC"
+Burkholderiales="CGACACCAGCGACGGCACCGGCCTGCACCACCTGGTGTTCGAGGTGGTCGACAACTCGATCGACGAGGCACTGGCCGGCTATTGCGACGACATCGTCGTCACCATCCACACCGACAACTCGATCAGCGTGGTCGACAACGGCCGCGGCATCCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCGCTGACCGAGCTGCACGCCGGCGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+
+Herbaspirillum_unclassified1="CGACACCTCTGACGGCACCGGCCTGCACCACCTGGTGTTCGAAGTGCTGGACAACTCGATCGACGAAGCCCTGGCCGGCTATTGCAGCGAGATCCACGTCACCATCCACGCCGACAACTCCATCTCGATCACCGACAACGGCCGCGGCATCCCCACCGGCCTCAAGATGGACGACAAGCACGAACCCAAGCGTTCGGCTGCCGAAATCGTGATGACCGAGCTGCACGCCGGCGGCAAGTTCGACCAGAACTCCTACAAGGTC"
+Aeromonas_hydrophila="CGATACGGATGATGGCTCGGGTCTGCACCACATGGTGTTCGAGGTCGTCGACAACTCCATTGACGAGGCTCTGGCCGGCTACTGCTCCGATATTCAGGTCAAGATCCATTCCGACGGTTCCGTCTCCGTCCGTGACAACGGTCGTGGTATTCCTGTCGACATCCACCCGGAAGAGGGTCGCTCCGCTGCCGAAGTCATCATGACCGTGCTGCACGCGGGCGGCAAGTTCGACGACAACTCCTACAAGGTC"
+Methylorubrum_populi="CGGCACCGATGAGCGCGCGCTGCACCACCTCTTCGCCGAGGTGATCGACAACTCCATGGACGAAGCGGTCGCGGGTCACGCGAGCTTCATCGAGGTGGAGCTGGAGGAGACGGGCGCCCTCGTCGTCACCGATAACGGCCGCGGCATCCCCGTCGATCCGCACCCGAAATTTCCGGGCAAGTCCGCGCTCGAGGTCATCATGACCACGCTGCACGCGGGCGGGAAGTTCGATTCGAAGGTCTACGAGACC"
+NA1="CAACACCGATGACGGCTCGGGCCTGCACCATCTGGTTTTCGAGGTCGTCGACAACTCCATCGACGAAGCGCTGGCCGGCCACTGCTCGCAGATCGACGTGATCATGCACGCGGACAGCAGCATCACCGTGACCGATAACGGCCGCGGCATCCCTGTCGATCTGCACCCCAAGTTCAATGTATCGGCGGCCGAGGTCATCATGACCGTGCTGCACGCCGGCGGTAAGTTCAACCAGAACTCCTACAAGGTG"
+Novosphingobium_unclassified="CGACACCGACGACGGCTCTGGCCTGCACCACATGGTGTTCGAAGTGTCCGACAATGCCATCGACGAGGCACTGGCCGGGCATTGCGACCTGGTGCTGATCGAACTCAATCCCGATGGCTCGGTCTCGGTCGAGGACAACGGCCGCGGCATCCCCACCGGCATCCACGCCGAAGAAGGCGTCTCGGCGGCCGAGGTCATCATGACCCAGCTGCACGCTGGCGGTAAGTTCGAGAACACCAGTGACGACAACGCCTACAAGGTC"
+Sphingomonas_paucimobilis="CGACACCGACGACGGTTCGGGCCTCCACCATATGGTGTTCGAGGTCAGCGACAATGCGATCGACGAGGCGCTGGCGGGGCATTGCGACCGCATCGATATCCAGTTGAACGCTGATGGCTCGGTCAGCGTGACCGACAATGGCCGCGGTATCCCGACCGGCATCCACCCCGAAGAGGGTGTGTCAGCGGCCGAGGTCATCATGACCCAGTTGCACGCGGGCGGTAAGTTCGAAAACACCAGCGACGACAACGCCTATAAGGTT"
+NA2="GTCCACCGGTTTGGAAGGCTTGTTCCATCTGTTGCGCGAAGTGGCCGACAACTGTTTCGACGAGGCCATGGCCGGACATGCGACCAACATCACCATTACACTGCTCCCGAACGACATGGTCGCCGTGAGCGACAATGGCCGAGGCATCCCGGTAGACACGCACAAGCAATACGGCGTCTCGGCGCTCGAGCTCGTGCTCACGAAATTGCATGCAGGAGGTAAGTTCGGCGGTGACGATTCCGGCTACAAGATC"
+Diaphorobacter_unclassified="CGATACGTCCGACGGCACCGGACTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGATGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCCATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCGCTGACCGAACTGCACGCCGGTGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+NA3="GGATACCGGTGTGCGAGGGCTCCATCACCTGATTTGGGAAATCGTCGATAACTCCATCGACGAAGCAATGGCGGGACATTGTAAAAACATTTCCGTCACAATCCATTTAGACAATTCGATCACGGTGGAAGATGATGGACGAGGGATTCCCGTCGATATTCACCCCACCGAGGGCATTTCCGCGTTGGAAGTGGTACTGACGAAGTTGCACGCCGGCGGTAAGTTCAATAACAACGCCTATAAAGTT"
+Herbaspirillum_unclassified2="CGACACCTCTGACGGTACCGGCCTGCACCACCTGGTGTTCGAAGTGCTGGACAACTCGATCGACGAAGCCCTGGCCGGCTATTGCAGCGAGATCCACGTCACCATCCACGCCGACAACTCCATCTCGATCACCGACAACGGCCGCGGCATCCCCACCGGCCTCAAGATGGACGACAAGCACGAACCCAAGCGTTCGGCTGCCGAAATCGTGATGACCGAGCTGCACGCCGGCGGCAAGTTCGACCAGAACTCCTACAAGGTC"
+NA4="GGATGTCGGGGTGCGCGGCCTTCACCATCTCGTCTACGAGGTCGTCGACAACTCCGTCGACGAGGTGCTCGTCGGCCAAGCCGACCGCATCGACGTCGTCATCCATAACAACAATTCCGTTTCCGTTACCGATAACGGCCGGGGCATCCCGGTCGACATCCACCCCGGCGAGAAAAAGCCGGCGGTCGAGGTCGTGCTGACGATGCTCCATGCCGGCGGCAAGTTCGACAAGAAGAGCTACAAGGTC"
+Herbaspirillum_unclassified3="CGACACCTCTGACGGCACCGGCCTGCACCACCTGGTGTTCGAAGTGCTGGACAACTAGATCGACGAAGCCCTGGCCGGCTATTGCAGCGAGATCCACGTCACCATCCACGCCGACAACTCCATCTCGATCACCGACAACGGCCGCGGCATCCCCACCGGCCTCAAGATGGACGACAAGCACGAACCCAAGCGTTCGGCTGCCGAAATCGTGATGACCGAGCTGCACGCCGGCGGCAAGTTCGACCAGAACTCCTACAAGGTC"
+
+all_conta_run2=c(Microbacterium_barkeri,Shigella_unclassified,Pseudomonas_fluorescens,Diaphorobacter_unclassified1,Acinetobacter_junii,Diaphorobacter_unclassified2,Alicycliphilus_unclassified,Shigella_unclassified,Thermomonas_fusca,Burkholderiales,Herbaspirillum_unclassified1,Aeromonas_hydrophila,Methylorubrum_populi,NA1,Novosphingobium_unclassified,Sphingomonas_paucimobilis,NA2,Diaphorobacter_unclassified,NA3,Herbaspirillum_unclassified2,NA4,Herbaspirillum_unclassified3)
+```
+
+
+## 1.4 - Filtering
+
+Removed contaminants by looking at weird taxa in control samples and then remove positive and negative controls
+
+```{r, echo=FALSE, results='hide'}
+
+pop_taxa = function(physeq, badTaxa){
+  allTaxa = taxa_names(physeq)
+  myTaxa <- allTaxa[!(allTaxa %in% badTaxa)]
+  return(prune_taxa(myTaxa, physeq))
+}
+
+psgyrB_1=psgyrB_0 # 18945 taxa and 384 samples
+psgyrB_2 = pop_taxa(psgyrB_1,all_conta_run2) #18924 taxa and 384 samples
+psgyrB_3 <- subset_samples(psgyrB_2, Sample_Type =="Sample") 
+psgyrB_3 <- filter_taxa(psgyrB_3, function(x) sum(x) > 0, TRUE) #18535 taxa and 363 samples 
+```
+
+Filter ASV: keep ASVs >20 counts and at least 2 samples
+
+```{r}
+#psgyrB_4 <- filter_taxa(psgyrB_3, function(x) sum(x > 3) > (0.01*length(x)), TRUE) # 2738 taxa and 363 samples
+
+## changing the filtering 
+psgyrB_4 <- filter_taxa(psgyrB_3, function(x) sum(x) > 20, TRUE) #ASVs must have at least 20 reads   --> 4367 taxa and 363 samples
+psgyrB_4 = phyloseq_filter_prevalence(psgyrB_4,prev.trh = 2/363,abund.trh = NULL ) #ASVs must be found in at least 2 samples -->  3805 taxa and 363 samples 
+
+```
+
+Removed gyrB ASV not affiliated at the kingdom level and phylum level.
+Removed gyrB ASV affiliated as parE (a paralog of gyrB)
+
+```{r, echo=FALSE}
+psgyrB_5 <- subset_taxa(psgyrB_4, !is.na(Kingdom) & !Kingdom %in% c("parE") & !is.na(Phylum)) ## 2883 taxa and 363 samples
+```
+
+## 1.6 - Phylogenetic tree
+Perform NJ tree for 16S and gyrB - this take a long time so we upload a phyloseq object with the phylogenetic already incorporated.
+```{r, echo=FALSE}
+library("DECIPHER"); packageVersion("DECIPHER")
+library("phangorn"); packageVersion("phangorn")
+seqs.gyrB <- refseq(psgyrB_5)
+alignment.gyrB <- AlignTranslation(seqs.gyrB, sense = "+", readingFrame = 2, type ="DNAStringSet") 
+phang.align.gyrB <- phyDat(as(alignment.gyrB, "matrix"), type="DNA")
+dm.gyrB <- dist.ml(phang.align.gyrB)
+treeNJ.gyrB <- NJ(dm.gyrB) # Note, tip order != sequence order
+
+dgyrB <- phyloseq(tax_table(psgyrB_5), sample_data(psgyrB_5),
+                 otu_table(psgyrB_5, taxa_are_rows = FALSE), refseq(psgyrB_5), phy_tree(treeNJ.gyrB))
+saveRDS(dgyrB, "PS_run_07_08_22_test_16_11.rds") 
+```
+
+# 2 - Subset by project
+
+```{r, echo=FALSE, message=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+dgyrB <- readRDS("PS_run_07_08_22.rds") # 2883 taxa and 363 samples
+
+dgyrB.OSMOSE_Run2 <- subset_samples(dgyrB, Sample_Project =="OSMOSE_Run2")
+dgyrB.OSMOSE_Run2 <- filter_taxa(dgyrB.OSMOSE_Run2 , function(x) sum(x) > 0, TRUE) #1039 taxa and 275 samples
+
+
+design <- read.csv("/Users/garnault-admin/Documents/Thèse/Analyses/SynCom/Analyse_metabarcoding/Run2_richness/Design_runRichness.csv", sep = ";",  check.names=FALSE, row.names=1)
+design=design[design$Sample_Project!="Astredhor",] 
+sample_data(PS_run2_rich)=design
+
+pop_taxa = function(physeq, badTaxa){
+  allTaxa = taxa_names(physeq)
+  myTaxa <- allTaxa[!(allTaxa %in% badTaxa)]
+  return(prune_taxa(myTaxa, physeq))
+}
+
+
+
+Herbaspirillum_conta="CGACACCTCTGACGGCACCGGCCTGCACCACCTGGTGTTCGAAGTGCTGGACAACTCGATCGACGAAGCCCTGGCCGGCTATTGCAGCGAGATCCACGTCACCATCCACGCCGACAACTCCATCTCGATCACCGACAACGGCCGCGGCATCCCCACCGGCCTCAAGATGGACGACAAGCACGAACCCAAGCGTTCGGCTGCCGAAATCGTGATGACCGAGCTGCACGCCGGCGGCAAGTTCGACCAGAACTCCTACAAGGTC"
+PS_run2_rich=pop_taxa(dgyrB.OSMOSE_Run2,Herbaspirillum_conta) #1038 taxa
+
+strains_33=read.csv("/Users/garnault-admin/Documents/Thèse/Analyses/SynCom/Analyse_metabarcoding/Run2_richness/Strains_metadata_richness.csv",sep=";",h=T)
+
+
+#check inoc for potential SNPs
+PS_run2_rich_inocula=subset_samples(PS_run2_rich,Type=="Inoculum") #1038 taxa and 12 samples 
+PS_run2_rich_inocula <- filter_taxa(PS_run2_rich_inocula, function(x) sum(x) > 0, TRUE) # 55 taxa and 12 samples
+
+seqs.gyrB_exp3_inocula <- refseq(PS_run2_rich_inocula)
+alignment.gyrB_exp3_inocula <- AlignTranslation(seqs.gyrB_exp3_inocula, sense = "+", readingFrame = 2, type ="DNAStringSet") 
+
+phang.align.gyrB_exp3_inocula<- phyDat(as(alignment.gyrB_exp3_inocula, "matrix"), type="DNA")
+dm.gyrB_exp3_inocula <- dist.ml(phang.align.gyrB_exp3_inocula)
+treeNJ.gyrB_exp3_inocula <- NJ(dm.gyrB_exp3_inocula)
+
+library(ape)
+node.distances <- cophenetic(treeNJ.gyrB_exp3_inocula)
+
+node.labels <- paste(treeNJ.gyrB_exp3_inocula$tip.label, round(node.distances, 2), sep = "\n")
+treeNJ.gyrB_exp3_inocula$tip.label <- node.labels
+
+plot_tree_inoc_exp3=plot_tree(treeNJ.gyrB_exp3_inocula, label.tips="Species", ladderize="left",color="Concentration",size="abundance")+scale_color_manual(values=concentration_color) 
+
+write.csv(alignment.gyrB_exp3_inocula,"/Users/garnault-admin/Documents/Thèse/Article 1/Data/check_inocula_exp3.csv")
+
+list_of_SNP=c("CGATACGGATGACGGTACCGGTCTGCACCACATGGTATTCGAGGTAGTAGATAACGCTATCGACGAAGCGCTCGCAGGGTACTGTAAAGACATTATCGTCACCATCCACAGCGATAACTCTGTCTCCGTACAGGATGATGGGCGTGGTATTCCGACCGGTATTCACCCGGAAGAGGGCGTTTCTGCTGCGGAAGTGATCATGACCGTACTGCATGCGGGCGGTAAGTTCGACGATAACTCCTATAAAGTC","CGACACGGATGACGGTACCGGTCTGCACCACATGGTATTTGAGGTTGTGGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGACATCGTGGTGACCATCCACGCCGACAACTCCGTCTCCGTAACCGATGATGGCCGTGGCATCCCGACCGGTATCCACCCGGAAGAGGGCGTCTCTGCGGCGGAAGTGATCATGACCGTCCTGCACGCAGGCGGTAAGTTCGATGATAACTCCTATAAAGTC","CGATACCGATGACGGTACCGGTCTGCACCACATGGTATTCGAGGTTGTGGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGATATTATCGTCACCATTCACGGCGATAACTCCGTTTCCGTACAGGATGATGGCCGTGGTATCCCAACGGGTATTCACCCGGAAGAGGGTGTCTCCGCTGCGGAAGTGATCATGACCGTCCTGCACGCAGGCGGTAAATTTGATGATAACTCCTATAAAGTT","CGACACCTCGGACGGTACCGGCCTGCACCACCTGGTGTTCGAAGTCCTCGACAACTCGATCGACGAAGCGCTGGCCGGTTATTGCACCGAGATCCACGTCACCATCCACTCCGACAACTCGATTTCGATCACCGACAACGGCCGCGGCATTCCGACCGGCGTCAAGATGGACGACAAGCACGAGCCAAAGCGCTCGGCAACCGAGATCGCCCTGACCGAACTGCACGCGGGCGGCAAGTTCAACCAGAACTCCTACAAGGTG","CGACACCTCGGACGGTACCGGCCTGCACCACCTGGTGTTCGAAGTCCTCGACAACTCGATCGACGAAGCGCTGGCCGGTTATTGCACCGAGATCCACGTCACCATCCACTCCGACAACTCGATTTCGATCGCCGACAACGGCCGCGGCATCCCGACCGGCGTCAAGATGGACGACAAGCACGAGCCAAAACGCTCGGCAACCGAGATCGCCCTGACCGAGCTGCACGCCGGCGGCAAGTTCAACCAGAACTCCTATAAAGTG","TGACACCGACGATGGTAGCGGTCTGCACCACATGGTGTTCGAGGTGGTCGACAACTCGATCGACGAAGCCCTCGCCGGCCATTGCGACGACATCAGCATCATCATCCACCCGGACGAGTCCATCACCGTTAAAGACAACGGTCGTGGCATCCCGGTAGACGTGCATAAAGAGGAAGGCGTTTCTGCCGCTGAGGTCATCATGACCGTCCTTCACGCTGGCGGTAAGTTCGACGACAACTCCTACAAGGTT","TGATACAGACGATGGTAGCGGTCTGCACCACATGGTGTTCGAGGTGGTTGATAACTCGATCGACGAAGCATTGGCAGGCCATTGCGACGACATCAGCATCATCATCCACCCAGACGAATCTATCACCGTGCGCGACAACGGCCGCGGTATTCCGGTAGACGTGCATAAAGAAGAAGGCGTGTCGGCAGCCGAGGTCATCATGACCGTGCTCCACGCTGGCGGTAAGTTCGATGATAACTCCTACAAAGTA","CGACACGGATGACGGTACCGGTCTGCACCACATGGTATTTGAGGTGGTAGATAACGCTATCGACGAAGCGCTCGCCGGTCACTGTAAAGACATCGTGGTGACCATTCACGCTGATAATTCCGTGTCCGTATCGGATGATGGGCGCGGTATCCCGACCGGGATTCACCCGGAAGAGGGCGTTTCAGCGGCGGAAGTGATCATGACCGTTCTGCACGCCGGCGGGAAGTTCGATGATAACTCCTATAAAGTG","CGACACCGACGACGGTTCGGGCCTTCACCATATGGTGTTCGAGGTGTCGGACAATGCGATTGACGAAGCGCTGGCGGGGCATTGCGACCGCATCGACATTCAGTTGAACGCCGACGGTTCGGTCAGCGTGACCGACAATGGTCGCGGCATCCCGACCGGCATCCACCCCGAAGAGGGCGTGTCCGCGGCCGAGGTCATCATGACTCAGCTCCACGCCGGCGGTAAGTTCGAGAATACGTCGGACGACAACGCCTATAAGGTG","CGATGTCCACGACGGTACCGGCCTGCACCACATGGTGTTCGAAGTCGTCGACAACTCGATCGATGAGGCGCTCGCGGGCCATGCCGACCACGTTTCGGTGACGATCCATGCAGACGGCTCGGTCGGCGTGTCGGATAACGGGCGTGGTATCCCGACCGGCAAGCATGAGCAGATGAGCAGGAAGCTGGATCGCGAAGTCTCGGCAGCCGAGGTCGTGATGACGGTCCTGCACGCCGGCGGCAAGTTCGACGACAACAGCTACAAAGTG","CGATACGGATGACGGTACCGGTCTGCACCACATGGTATTCGAGGTAGTAGATAACGCTATCGACGAAGCGCTCGCAGGGTACTGTAAAGACATTATCGTCACCATCCACAGCGATAACTCTGTCTCCGTACAGGATGATGGGCGTGGTATTCCGACCGGTATTCACCCGGAAGAGGGCGTTTCTGCTGCGGAAGTGATCATGACCGTACTGCATGCGGGCGGTAAGTTCGACGATAACTCCTATAAAGTC","CGATACGGATGACGGTACCGGTCTGCACCACATGGTATTCGAGGTAGTAGATAACGCTATCGACGAAGCGCTCGCAGGGTACTGTAAAGACATTATCGTCACCATCCACAGCGATAACTCTGTCTCCGTACAGGATGATGGGCGTGGTATTCCGACCGGTATTCACCCGGAAGAGGGCGTTTCTGCTGCGGAAGTGATCATGACCGTACTGCATGCGGGCGGTAAGTTCGACGATAACTCCTATAAAGTC","CGACACGGATGACGGTACCGGTCTGCACCACATGGTATTTGAGGTTGTGGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGACATCGTGGTGACCATCCACGCCGACAACTCCGTCTCCGTAACCGATGATGGCCGTGGCATCCCGACCGGTATCCACCCGGAAGAGGGCGTCTCTGCGGCGGAAGTGATCATGACCGTCCTGCACGCAGGCGGTAAGTTCGATGATAACTCCTATAAAGTC","CGATACCGATGACGGTACCGGTCTGCACCACATGGTATTCGAGGTTGTGGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGATATTATCGTCACCATTCACGGCGATAACTCCGTTTCCGTACAGGATGATGGCCGTGGTATCCCAACGGGTATTCACCCGGAAGAGGGTGTCTCCGCTGCGGAAGTGATCATGACCGTCCTGCACGCAGGCGGTAAATTTGATGATAACTCCTATAAAGTT")
+
+PS_run2_rich=pop_taxa(PS_run2_rich,list_of_SNP) #1031 taxa
+
+
+saveRDS(PS_run2_rich, "PS_exp3_filtered.rds") 
+
+```
+
+
+
+

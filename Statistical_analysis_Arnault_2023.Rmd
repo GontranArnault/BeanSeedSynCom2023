@@ -1,0 +1,2227 @@
+---
+title: "Seedling microbiota engineering using bacterial synthetic community inoculation on seeds"
+author: "Gontran"
+date: "10/24/2022"
+output: html_document
+---
+
+## Usefull functions for the analyses
+
+```{r}
+#to transform pairwise result as data frame https://sites.google.com/site/rgraphiques/4--stat/comparaison-de-moyennes-avec-r/identifier-les-classes-de-moyennesd%C3%A9chantillons-apr%C3%A8s-les-avoir-comparer?pli=1
+
+tri.to.squ<-function(x)
+{
+rn<-row.names(x)
+cn<-colnames(x)
+an<-unique(c(cn,rn))
+myval<-x[!is.na(x)]
+mymat<-matrix(1,nrow=length(an),ncol=length(an),dimnames=list(an,an))
+for(ext in 1:length(cn))
+{
+ for(int in 1:length(rn))
+ {
+ if(is.na(x[row.names(x)==rn[int],colnames(x)==cn[ext]])) next
+ mymat[row.names(mymat)==rn[int],colnames(mymat)==cn[ext]]<-x[row.names(x)==rn[int],colnames(x)==cn[ext]]
+ mymat[row.names(mymat)==cn[ext],colnames(mymat)==rn[int]]<-x[row.names(x)==rn[int],colnames(x)==cn[ext]]
+ }
+}
+return(mymat)
+}
+
+
+
+```
+
+##Open libraries
+
+```{r}
+
+install.packages("BiocManager")
+BiocManager::install("phyloseq")
+library(phyloseq)
+#library(vegan)
+install.packages("iNEXT")
+library(iNEXT)
+BiocManager::install("microbiome")
+library(microbiome)
+library(metagMisc)
+library(RVAideMemoire)
+library(tibble)
+library(dplyr)
+install.packages("Rmisc")
+library(Rmisc)
+library(tidyr)
+library(RColorBrewer)
+library(ggpubr)
+library(RVAideMemoire)
+library(multcompView)
+library(rstatix)
+library("DECIPHER"); packageVersion("DECIPHER") #‘2.22.0’
+library("phangorn"); packageVersion("phangorn")
+```
+
+#Import data, filtering and rarefaction
+
+###EXP1
+
+```{r}
+
+data_SynCom=readRDS("~/Documents/Thèse/Article 1/Data/PS_exp1_filtered.rds")
+
+#check inoc
+strains_14=strains[strains$CS14=="Yes",]
+write.csv(strains_14,"Documents/Thèse/Article 1/Data/exp1_strains14.csv")
+data_SynCom_inoc=subset_samples(data_SynCom,Inoculation=="Yes")
+write.csv(t(otu_table(data_SynCom_inoc)),"Documents/Thèse/Article 1/Data/exp1runOTU_table.csv")
+write.csv(tax_table(data_SynCom_inoc),"Documents/Thèse/Article 1/Data/exp1runtax_table.csv")
+write.csv(refseq(data_SynCom_inoc),"Documents/Thèse/Article 1/Data/exp1_refseq.csv")
+
+
+#Rarefaction
+#####
+# 8187283 reads before rarefaction
+
+otu_df <- as.data.frame(otu_table(data_SynCom))
+mat_exp_1 <- as.matrix(otu_df)
+
+rarecurve(mat_exp_1, step=50, cex=0.5) #--> for figS2
+
+data_SynCom_rar10000=rarefy_even_depth(data_SynCom,sample.size = 10000) #16 samples removed because they contained fewer reads than `sample.size ; 9OTUs were removed because they are no longer present in any sample after random subsampling
+
+# 1620000 reads after rarefaction at 10 000 reads per samples
+
+#coverage based rarefaction for alpha diversity analysis
+
+data_SynCom_rar_cov=phyloseq_coverage_raref(data_SynCom, coverage=0.99999, drop_lowcoverage=T)
+
+```
+
+
+###EXP2
+
+```{r}
+PS_run1_conc=readRDS("/Users/garnault-admin/Documents/Thèse/Article 1/Data/PS_exp2_filtered.rds" )  #898 taxa and 198 samples 
+
+
+#rarefaction for experiment 2
+
+# obtain otu table as a dataframe
+otu_PS_run1_conc <- as.data.frame(otu_table(PS_run1_conc))
+
+# as matrix
+mat_exp_2 <- as.matrix(otu_PS_run1_conc)
+
+rarecurve(mat_exp_2, step=50, cex=0.5) #--> FigS2
+
+low_samples_exp2 <- subset(mat_exp_2, rowSums(mat_exp_2)<10000 )
+rarecurve(low_samples_exp2, step=50, cex=0.5)
+
+
+
+```
+
+###EXP3
+
+```{r}
+PS_run2_rich=readRDS("PS_exp3_filtered.rds") #1031 taxa
+
+
+
+####Rarefaction  
+
+min(rowSums(otu_table(PS_run2_rich)))
+#[1] 3314
+
+# obtain otu table as a dataframe
+otu_PS_exp3<- as.data.frame(otu_table(PS_run2_rich))
+
+# as matrix
+mat_exp_3 <- as.matrix(otu_PS_exp3)
+
+rarecurve(mat_exp_3, step=50, cex=0.5)
+
+low_samples_exp2 <- subset(mat_exp_2, rowSums(mat_exp_2)<10000)
+rarecurve(low_samples_exp2, step=50, cex=0.5)
+
+# rarefaction at 10000 reads, losing 2 samples but keeping a very good coverage for the others
+PS_run2_rich_rar=rarefy_even_depth(PS_run2_rich, sample.size =10000 ) #CS5-A-9-6CS5-B-4-22 removed , 11OTUs were removed because they are no longer present in any sample after random subsampling
+
+
+
+```
+
+
+# Colors for the article
+
+```{r}
+SynCom_color=c('0'="black",'3A'="#74c69d",'3B'="#52b788",'3C'="#40916c",'5A'="#61a5c2",'5B'="#468faf",'5C'="#2c7da0",'8A'="#a68a64",'8B'="#936639",'8C'="#7f4f24",'11A'="#bc3908",'11B'="#941b0c",'11C'="#621708")
+
+concentration_color=c("0"="black","5"="#ea8c55","6"="#c75146","7"="#ad2e24","8"="#540804")
+
+sample_color=c("Seed"="grey","Inoculum"="black","NG"="#990000","PA"="#E69F00","PN"="#41AB5D","Soil"="#774936")
+
+#tax color exp 3
+tax_colors=c("Bacillus sp (9009)"="#3182BD","Bacillus megaterium (9010)"="#9ECAE1","Bacillus thuringiensis (9014)"	=	"#6BAED6","Chryseobacterium sp (8996)"	=	"#009999","Curtobacterium sp (9011)"=	"#B7B7A4","Frigoribacterium sp (9030)"=	"#A5A58D","Frigoribacterium sp (9039)"="#6B705C","Kosakonia sp (8986)"	=	"#8C96C6","Lelliottia sp (8978)"="#9EBCDA","Massilia sp (9012)"="#ac694e","Massilia sp (9026)"	=	"#774936","Microbacterium sp (9023)"="#E7E1EF","Microbacterium sp (9034)"=	"#CFE1F2","Leclercia sp (8987)"="#8C6BB1","Pantoea agglomerans (8988)"="#88419D","Pantoea agglomerans (8989)"	=	"#810F7C","Pseudomonas fluorescens subgroup (8992)"	=	"#238443","Pseudomonas koreensis subgroup (9003)"	=	"#005A32","Pseudomonas coleopterorum (8977)"	=	"#ADDD8E","Pseudomonas coleopterorum (8982)"	=	"#78C679","Pseudomonas putida group (8984)"	=	"#C2E699","Pseudomonas syringae (8979)"	=	"#76C893","Pseudomonas viridiflava (8983)"	=	"#80ED99","Pseudomonas viridiflava (8985)"	=	"#C7F9CC","Rathayibacter festucae (9033)"	=	"#DDBEA9","Rhizobium sp (9020)"	=	"#225EA8","Siccibacter turicensis (8990)"	=	"#BFD3E6","Sphingomonas sp (9019)"=	"#FD8D3C","Sphingomonas sp (9021)"="#FED976","Stenotrophomonas rhizophila (9006)"="#660000","Stenotrophomonas sp (8994)"	=	"#990000","Stenotrophomonas sp (8980)"	=	"#CC0000","Other strains"="#000000")
+
+strains_33=read.csv("/Users/garnault-admin/Documents/Thèse/Analyses/SynCom/Analyse_metabarcoding/Run2_richness/Strains_metadata_richness.csv",sep=";",h=T)
+
+#Pedobacter sp (9032): not found in the dataset after filtering
+
+#tax color exp 2
+tax_colors_14=c("Pseudomonas coleopterorum (8977)"=	"#ADDD8E"
+,"Leclercia sp (8987)"=	"#8C6BB1"
+,"Pantoea agglomerans (8988)"=	"#88419D"
+,"Pseudomonas viridiflava (8991)"=	"#78C679"
+,"Pseudomonas fluorescens subgroup (8992)"=	"#238443"
+,"Sphingomonas sp (8993)"=	"#FDAE6B"
+,"Stenotrophomonas sp (8994)"="#990000"
+,"Enterobacter sp (8995)"	="#6E016B"
+,"Pseudomonas koreensis subgroup (9003)"=	"#005A32"
+,"Massilia sp (9012)"=	"#FED976"
+,"Bacillus thuringiensis (9014)"=	"#6BAED6"
+,"Sphingomonas sp (9019)"=	"#FD8D3C"
+,"Rhizobium sp (9020)"="#225EA8"
+,"Microbacterium sp (9023)"=	"#E7E1EF","Native strain" = "Black")
+
+family_colors=c("Bacillaceae"="#6BAED6","Flavobacteriaceae"	=	"#009999","Enterobacteriaceae"="#8C6BB1","Oxalobacteraceae"	=	"#774936","Microbacteriaceae"="#B7B7A4","Erwiniaceae"	=	"#810F7C","Pseudomonadaceae"	=	"#005A32","Rathayibacter festucae (9033)"	=	"#DDBEA9","Rhizobiaceae"	=	"#225EA8","Siccibacter turicensis (8990)"	=	"#BFD3E6","Sphingomonadaceae"=	"#FD8D3C","Xanthomonadaceae"	=	"#CC0000")
+
+```
+
+#Figure 1
+
+Fig1A was made using Powerpoint and Biorender
+
+Fig1B was made using iTol
+
+#Figure 2: Effects of seed sterilization, SynCom concentration and composition on seed colonization
+
+###Panel A: impact of disinfection on community size on seeds using experiment 1
+
+```{r}
+maceration_CFU=read.csv(file="~/Documents/Thèse/Analyses/SynCom/dataR/macerationCFU.csv",h=T,sep=";")
+
+maceration_CFU$REP_Bio=as.character(maceration_CFU$REP_Bio)
+
+maceration_CFU_noC0_no_alginate=maceration_CFU[maceration_CFU$Inoc_fluid!="Alginate",]
+
+#check normality
+par(mfrow=c(1,2))
+#Histogram
+hist(maceration_CFU_noC0_no_alginate$Log_CFU_sample)
+# Quantile-Quantile Plot
+qqnorm(maceration_CFU_noC0_no_alginate$Log_CFU_sample)
+qqline(maceration_CFU_noC0_no_alginate$Log_CFU_sample)
+
+library(rstatix)
+#Normality is ok
+
+stat_maceration_CFU=summarySE(maceration_CFU, measurevar=c("Log_CFU_sample"), groupvars=c("Concentration","Maceration","Desinfection","Inoc_fluid"), na.rm = TRUE)
+
+maceration_CFU_noC0_no_alginate_single_seed=maceration_CFU_noC0_no_alginate[maceration_CFU_noC0_no_alginate$Maceration=="Single_seed",]
+
+
+maceration_CFU_noC0_no_alginate_single_seed$Group=paste(maceration_CFU_noC0_no_alginate_single_seed$Concentration,maceration_CFU_noC0_no_alginate_single_seed$Desinfection, sep = "_", collapse = NULL)
+
+anova_concentration_sterilization=aov(Log_CFU_sample~Group,data=maceration_CFU_noC0_no_alginate_single_seed)
+summary(anova_concentration_sterilization) #0.0203 *
+library(multcomp)
+#####
+library(multcompView)
+Tukey_concentration_sterilization=TukeyHSD(anova_concentration_sterilization, conf.level=.95) 
+letter_group=multcompLetters(Tukey_concentration_sterilization$Group[,4]<0.05)
+letter_group2=as.data.frame.list(letter_group)
+letter_group2$Group=row.names(letter_group2)
+stat_cfu_r2=merge(letter_group2,maceration_CFU_noC0_no_alginate_single_seed,by="Group")
+
+
+plot_fig2A=ggplot(stat_cfu_r2, aes(x=Concentration, y=Log_CFU_sample,fill=Desinfection)) + 
+    geom_boxplot(alpha=0.5)+ geom_point(aes(x=Concentration,y=Log_CFU_sample,color=Desinfection,fill=Desinfection), 
+             position=position_jitterdodge(jitter.width=0.3,  # <<- adjusted
+                                           dodge.width=0.7), 
+             size=4, alpha=1)+ylab("CFU/seed")+theme_classic()+theme(text = element_text(size = 20))+xlab("Inoculum concentration (CFU/mL)")+scale_x_discrete(limits =c("C5", "C6","C7"),labels=c("C5"=expression(bold(paste("10"^"5"))), "C6"=expression(bold(paste("10"^"6"))),"C7"=expression(bold(paste("10"^"7")))))+annotate("text",x=0.81,label = expression(bold("a")), y =  6.8,size=5)+annotate("text",x=1.19,label = expression(bold("a")), y =  6.8,size=5)+annotate("text",x=1.82,label =expression(bold("b")), y =  7.3,size=5)+annotate("text",x=2.18,label = expression(bold("b")), y =  7.3,size=5)+annotate("text",x=2.82,label = expression(bold("c")), y =  8.2,size=5)+annotate("text",x=3.18,label = expression(bold("c")), y =  8.2,size=5)+theme(legend.position = c(3, 4))+labs(fill="Disinfection")+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+scale_y_continuous(breaks =c(4,5,6,7,8),labels=c("4"=expression(bold(paste("10"^"4"))),"5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))
+
+legend_fig2A <- get_legend(plot_fig2A)
+legend_fig2A=ggarrange(legend_fig2A)
+plot_fig2A=plot_fig2A+theme(legend.position = "none")  
+
+```
+
+
+
+###Panel B: Alpha diversity of experiment 1 seed samples
+
+```{r}
+
+##Coverage rarefaction before analysis
+remotes::install_github("vmikk/metagMisc")
+library(metagMisc)
+data_PS_exp1=data_SynCom
+otu_table(data_PS_exp1)=t(otu_table(data_PS_exp1))
+PS_exp1_cov=phyloseq_coverage_raref(data_PS_exp1, coverage=0.99999, drop_lowcoverage=T)
+# alpha diversity EVENNESS
+
+table_rgyrB_inoc_run_EXP1 <- estimate_richness(data_PS_exp1, split = TRUE,
+measures=c("Observed", "Shannon"))
+#Add evenness
+HgyrB <- table_rgyrB_inoc_run_EXP1$Shannon
+S1gyrB <- table_rgyrB_inoc_run_EXP1$Observed
+SgyrB <- log(S1gyrB)
+eve_gyrB <- HgyrB/SgyrB
+table_rgyrB_inoc_run_EXP1$Evenness <- eve_gyrB
+sample_data=as.data.frame(sample_data(data_PS_exp1))
+
+row.names(table_rgyrB_inoc_run_EXP1)=gsub('\\.', '-', row.names(table_rgyrB_inoc_run_EXP1))
+table_rgyrB2_EXP1=merge(table_rgyrB_inoc_run_EXP1,sample_data,by="row.names")
+table_rgyrB2_EXP1$Hill_Shannon=exp(table_rgyrB2_EXP1$Shannon)
+
+table_rgyrB3_EXP1=pivot_longer(table_rgyrB2_EXP1,cols = c("Observed","Evenness","Hill_Shannon"),names_to = "Alpha_div")
+table_rgyrB3_EXP1=as.data.frame(table_rgyrB3_EXP1)
+
+stat_alpha_PS_EXP1=summarySE(table_rgyrB3_EXP1, measurevar=c("value"), groupvars=c("Concentration","Inoculation","Inoc_fluid","Alpha_div","Desinfection","Maceration"), na.rm = TRUE)
+
+stat_alpha_PS_EXP1_seed=stat_alpha_PS_EXP1[stat_alpha_PS_EXP1$Inoculation!="Yes",]
+
+stat_alpha_PS_EXP1_seed_Observed=stat_alpha_PS_EXP1_seed[stat_alpha_PS_EXP1_seed$Alpha_div=="Observed",]
+
+
+pannel_labels=c("Control","CS5","CS6","CS7","CS8","No plant") 
+names(pannel_labels) <- c("0", "5", "6","7","8","No plant")
+
+stat_alpha_PS_run1_conc_Observed_noinoc_seed=stat_alpha_PS_run1_conc_Observed_noinoc[stat_alpha_PS_run1_conc_Observed_noinoc$Type=="Seed",]
+
+stat_alpha_PS_EXP1_seed_Observed$Concentration=as.character(stat_alpha_PS_EXP1_seed_Observed$Concentration)
+
+
+Sterilization_color=c("Yes"="#F8766D","No"="#00BFC4")
+
+table_rgyrB3_EXP1
+
+table_rgyrB3_EXP1_seed=table_rgyrB3_EXP1[table_rgyrB3_EXP1$Inoculation!="Yes",]
+
+table_rgyrB3_EXP1_seed_Observed=table_rgyrB3_EXP1_seed[table_rgyrB3_EXP1_seed$Alpha_div=="Observed",]
+table_rgyrB3_EXP1_seed_Observed$Concentration=as.character(table_rgyrB3_EXP1_seed_Observed$Concentration)
+
+
+table_rgyrB3_EXP1_seed_Observed_noControl=table_rgyrB3_EXP1_seed_Observed[table_rgyrB3_EXP1_seed_Observed$Concentration!=0,]
+
+shapiro.test(table_rgyrB3_EXP1_seed_Observed_noControl$value) #p-value = 0.001081
+
+
+table_rgyrB3_EXP1_seed_Observed_noControl$Desinfection <- factor(table_rgyrB3_EXP1_seed_Observed_noControl$Desinfection, levels = c("Yes", "No"))
+
+
+my_comparisons=list( c("5_No", "5_Yes"), c("6_No", "6_Yes"), c("7_No", "7_Yes") )
+                                                                                                                   plot_alpha_PS_EXP1_seed_bis <- ggplot(table_rgyrB3_EXP1_seed_Observed_noControl, aes(x=Concentration, y=value, fill=Desinfection)) + 
+  labs(color="Seed sterilization") + 
+  geom_boxplot(alpha=0.5) +
+  geom_point(aes(x=Concentration, y=value, color=Desinfection, fill=Desinfection), 
+             position=position_jitterdodge(jitter.width=0.3, dodge.width=0.7), 
+             size=4, alpha=1) +
+  theme_classic() +
+  ylab("Number of ASVs on seed") +
+  theme(text = element_text(size = 20)) +
+  xlab("Inoculum concentration (CFU/mL)")  +
+  scale_color_manual(name = "Desinfection", labels = c("Sterilized", "Unsterilized"), values=Sterilization_color) +
+  annotate("text", x=0.81, label = expression(bold("bc")), y =  23, size=5) +
+  annotate("text", x=1.19, label = expression(bold("a")), y =  26, size=5) +
+  annotate("text", x=1.82, label = expression(bold("ab")), y =  27, size=5) +
+  annotate("text", x=2.18, label = expression(bold("ab")), y =  27, size=5) +
+  annotate("text", x=2.82, label = expression(bold("c")), y =  24, size=5) +
+  annotate("text", x=3.18, label = expression(bold("c")), y =  24, size=5) +
+  guides(fill = "none", color = "none")            + theme(text = element_text(color="black", face="bold"))+scale_x_discrete(limits=c("5", "6","7"),labels=c("5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7")))))+theme(axis.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+theme(legend.position = c(3, 4))+labs(fill="Disinfection")+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+##STAT
+
+table_rgyrB3_EXP1_water=table_rgyrB3_EXP1[table_rgyrB3_EXP1$Inoc_fluid=="Water",]
+table_rgyrB3_EXP1_water_obs=table_rgyrB3_EXP1_water[table_rgyrB3_EXP1_water$Alpha_div=="Observed",]
+table_rgyrB3_EXP1_water_obs_seed=table_rgyrB3_EXP1_water_obs[table_rgyrB3_EXP1_water_obs$Maceration=="Single_seed",]
+#kruskal
+res.kruskal <- table_rgyrB3_EXP1_water_obs %>% kruskal_test(value ~ Desinfection)
+res.kruskal 
+
+
+#pariwise wilcoxon test
+
+table_rgyrB3_EXP1_water_obs
+table_rgyrB3_EXP1_water_obs_C5=table_rgyrB3_EXP1_water_obs_seed[table_rgyrB3_EXP1_water_obs_seed$Concentration=="5",]
+table_rgyrB3_EXP1_water_obs_C5=subset(table_rgyrB3_EXP1_water_obs_C5, !is.na(value))
+wilcox.test(value~Desinfection,data=table_rgyrB3_EXP1_water_obs_C5) #p-value = 0.0007726
+
+table_rgyrB3_EXP1_water_obs_C6=table_rgyrB3_EXP1_water_obs_seed[table_rgyrB3_EXP1_water_obs_seed$Concentration=="6",]
+table_rgyrB3_EXP1_water_obs_C6=subset(table_rgyrB3_EXP1_water_obs_C6, !is.na(value))
+wilcox.test(value~Desinfection,data=table_rgyrB3_EXP1_water_obs_C6) #p-value = 0.4142
+
+table_rgyrB3_EXP1_water_obs_C7=table_rgyrB3_EXP1_water_obs_seed[table_rgyrB3_EXP1_water_obs_seed$Concentration=="7",]
+table_rgyrB3_EXP1_water_obs_C7=subset(table_rgyrB3_EXP1_water_obs_C7, !is.na(value))
+wilcox.test(value~Desinfection,data=table_rgyrB3_EXP1_water_obs_C7) #p-value = 0.5365
+
+
+table_rgyrB3_EXP1_seed_Observed_noControl$Group=paste(table_rgyrB3_EXP1_seed_Observed_noControl$Concentration,table_rgyrB3_EXP1_seed_Observed_noControl$Desinfection, sep = "_", collapse = NULL)
+
+pp<-pairwise.wilcox.test(table_rgyrB3_EXP1_seed_Observed_noControl$value,g = table_rgyrB3_EXP1_seed_Observed_noControl$Group,paired = F,p.adjust.method = "none")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+letter_group_seed_syncom=as.data.frame.list(myletters)
+letter_group_seed_syncom$Group=row.names(letter_group_seed_syncom)
+table_rgyrB3_EXP1_seed_Observed_noControl=merge(letter_group_seed_syncom,table_rgyrB3_EXP1_seed_Observed_noControl,by="Group")
+
+```
+###Panel C: PCoA
+
+We use the rarefied dataset for this analysis
+
+```{r}
+#SINGLE SEED run 1
+#####
+
+data_SynCom_rar10000_singleseed=subset_samples(data_SynCom_rar10000, Maceration=="Single_seed"&Concentration!="C0"&Inoc_fluid!="Alginate")#remove alginate and C0
+data_SynCom_rar10000_singleseed
+dist= "bray"
+ord_meths = "PCoA"
+ord_SynCom_singleseed<- ordinate(data_SynCom_rar10000_singleseed, method = ord_meths, distance=dist)
+
+sample_data(data_SynCom_rar10000_singleseed)$Concentration = as.factor(sample_data(data_SynCom_rar10000_singleseed)$Concentration)
+
+plot_ord_SynCom_singleseed_EXP1 = plot_ordination(data_SynCom_rar10000_singleseed, ord_SynCom_singleseed, type="sites", color="Concentration",shape="Desinfection")+theme_bw()+theme_classic()+ geom_point(size = 5)+scale_color_manual(values = concentration_color[2:4])+theme(axis.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+theme(text = element_text(size = 20))+labs(shape = "Disinfection")+ theme(text = element_text(color="black", face="bold"))
+
+
+legend_fig2_B <- get_legend(plot_ord_SynCom_singleseed_EXP1)
+legend_fig2_B=ggarrange(legend_fig2_B)
+fig2_B=plot_ord_SynCom_singleseed_EXP1+theme(legend.position = "none")             
+
+#STAT
+
+SynCom_dist_singleseed=phyloseq::distance(data_SynCom_rar10000_singleseed,method="bray")
+metadata_sample_seed_testSC=data.frame(sample_data(data_SynCom_rar10000_singleseed))
+
+dispers_seed_testSC <- betadisper(SynCom_dist_singleseed,metadata_sample_seed_testSC$Desinfection+metadata_sample_seed_testSC$Concentration)
+anova(dispers_seed_testSC)
+
+adonis2(SynCom_dist_singleseed ~ sample_data(data_SynCom_rar10000_singleseed)$Concentration+sample_data(data_SynCom_rar10000_singleseed)$Desinfection+sample_data(data_SynCom_rar10000_singleseed)$Concentration:sample_data(data_SynCom_rar10000_singleseed)$Desinfection)
+
+```
+
+
+###Panel D: correlation between inoculum concentration and community size on seeds
+
+```{r}
+data_CFU_run1=read.csv2(file="~/Documents/Thèse/Article 1/Data/Inoc/Data_SynCom_inoc_exp2.csv",sep=";",h=T)
+data_CFU_run1$log_pop_sample=as.numeric(data_CFU_run1$log_pop_sample)
+
+data_CFU_run1$Category=as.numeric(data_CFU_run1$Category)
+data_CFU_run1_seeds=data_CFU_run1[data_CFU_run1$Sample_type=="Soaked_seed"&data_CFU_run1$Category!=0,]
+
+corr_conc_size_on_seeds=ggplot(data_CFU_run1_seeds,aes(x=Category,y=log_pop_sample))+geom_point(size=4)+theme_classic()+geom_smooth(method=lm)+ylab("Community size on seed (CFU/seed)")+xlab("Inoculum concentration (CFU/mL)")+theme(text = element_text(size = 20))+scale_x_continuous(breaks =c(5,6,7,8),labels=c("5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))+scale_y_continuous(breaks =c(5,6,7,8),labels=c("5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))+ theme(text = element_text(color="black", face="bold"))+theme(axis.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+theme(legend.position = c(3, 4))+labs(fill="Disinfection")+ theme(text = element_text(color="black", face="bold"))
+
+#STAT
+
+model=lm(data_CFU_run1_seeds$log_pop_sample~data_CFU_run1_seeds$Category)
+anova(model)
+summary(model)
+cor(data_CFU_run1_seeds$Category, data_CFU_run1_seeds$log_pop_sample, method = c("pearson"))
+
+```
+
+
+
+
+###Panel E: SynCom contribution to seeds (concentration)
+
+```{r}
+
+## avoid this part if you want to use data_figure_conc directly 
+PS_relative_run1=transform_sample_counts(PS_run1_conc, function(x) x/sum(x)*100)
+inoc_strains_PS_run1=prune_taxa(strains_14$gyrB, PS_relative_run1)
+
+data_figure_conc=as.data.frame(otu_table(inoc_strains_PS_run1))
+
+data_figure_conc<- tibble::rownames_to_column(data_figure_conc, "Sample_ID")
+
+data_figure_conc=pivot_longer(data_figure_conc,cols = strains_14$gyrB,names_to = "gyrB")
+colnames(data_figure_conc)=c("Sample_ID","gyrB","Relative_abundance")
+data_figure_conc=as.data.frame(data_figure_conc)
+
+data_figure_conc=left_join(data_figure_conc, strains_14,by="gyrB")
+
+
+sample_data_conc=as.data.frame(sample_data(inoc_strains_PS_run1))
+sample_data_conc$Sample_ID=row.names(sample_data_conc)
+data_figure_conc=left_join(data_figure_conc,sample_data_conc,by="Sample_ID")
+write.csv(data_figure_conc,"submission/gitHub/data_figure_conc.csv")
+###
+
+data_figure_conc=read.csv("data_figure_conc.csv")
+data_figure_seed_conc=data_figure_conc[data_figure_conc$Type.y=="Seed",]
+
+SynCom_contribution_seed_conc=aggregate(data_figure_seed_conc$Relative_abundance, by=list(Category=data_figure_seed_conc$Sample_ID), FUN=sum)
+colnames(SynCom_contribution_seed_conc)=c("Sample_ID","SynCom_contribution")
+PS_inoc_seed_conc=subset_samples(PS_run1_conc,Type=="Seed"&Plant_type!="NG")
+
+#sample_data_seedling =tibble::rownames_to_column(sample_data(PS_inoc_seedlings), "Sample_ID")
+sample_data_seed_conc=as.data.frame(sample_data(PS_inoc_seed_conc))
+
+
+row.names(SynCom_contribution_seed_conc)=SynCom_contribution_seed_conc$Sample_ID
+SynCom_contribution3_seed_conc=cbind(SynCom_contribution_seed_conc,sample_data_seed_conc,by="row.names",all.x=TRUE)
+
+stat_SynCom_contribution2_conc_seed=summarySE(SynCom_contribution3_seed_conc, measurevar=c("SynCom_contribution"),groupvars=c("Concentration"), na.rm = TRUE)
+
+# to get the mean of SynCom contribution in inoculated conditions mean(stat_SynCom_contribution2_conc_seed[2:5,]$SynCom_contribution)
+
+SynCom_contribution3_seed_conc
+anova_seed_contri=aov(SynCom_contribution~Concentration,data=SynCom_contribution3_seed_conc)
+summary(anova_seed_contri)
+
+mod2<-lm(SynCom_contribution3_seed_conc$SynCom_contribution~SynCom_contribution3_seed_conc$Concentration)
+drop1(mod2,test='F')
+
+par(mfrow=c(1,2))
+hist(residuals(mod2)
+      , col='red'
+      , xlab='Residuals'
+      , ylab='Number')
+qqnorm(residuals(mod2)
+       , col='red'
+       ,pch=16)
+qqline(residuals(mod2)) #--> overdispersion
+
+
+pp<-pairwise.wilcox.test(SynCom_contribution3_seed_conc$SynCom_contribution,g = SynCom_contribution3_seed_conc$Concentration,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+letter_group_seed_syncom_exp2=as.data.frame.list(myletters)
+letter_group_seed_syncom_exp2=letter_group_seed_syncom_exp2[,1:2]
+letter_group_seed_syncom_exp2$Concentration=row.names(letter_group_seed_syncom_exp2)
+stat_SynCom_contribution_exp2=merge(letter_group_seed_syncom_exp2,stat_SynCom_contribution2_conc_seed,by="Concentration")
+
+plot_fig2E <- ggplot(stat_SynCom_contribution_exp2, aes(x=Concentration, y=SynCom_contribution,color=Concentration))+ labs(color="Inoculation")+ 
+    geom_point(size=5,show.legend = F) +theme_classic()+scale_color_manual(values = concentration_color)+
+  geom_errorbar(aes(ymin=SynCom_contribution-se, ymax=SynCom_contribution+se), width=.05, position=position_dodge(0.05))+ylab("% of SynCom contribution")+theme(text = element_text(size = 20))+ylab("Cumulative Relative Abundance of \n SynCom  ASVs per seed (%)")+theme(text = element_text(size = 20))+xlab("Inoculum concentration (CFU/mL)")+ scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))+theme(legend.position="none")+geom_text(aes(label = Letters, y = SynCom_contribution + se), vjust = -1,show.legend = FALSE,size=6,colour="black")+scale_x_discrete(limits=c("0","5", "6","7","8"),labels=c("0"=expression(bold("Control")),"5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))+theme(axis.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+theme(legend.position = c(3, 4))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+
+
+```
+
+
+###Panel F: SynCom contribution to seeds of experiment 3
+
+```{r}
+
+### avoid this part if you want to use directly data_figure_rich.csv file
+inoc_strains=strains_33$gyrB
+
+pedobacter_9032="TGATACTGGTGTAAAGGGTTTGCATCATTTGGTTTATGAGGTTGTGGATAACTCTATTGATGAGGCTTTAGCCGGTCATGCAGATACAATCGACGTCAGGATTTTAGAAGGAAACTCCATCCGGGTTGAAGATAACGGTCGTGGTATTCCAACCGGAATTAATACAAAAGAAAATAAATCGGCACTAGAAATCGTAATGACGGTTCTACACGCGGGTGGTAAATTTGATAAGGATACTTATAAAGTT"
+
+PS_run2_rich_noNG=subset_samples(PS_run2_rich,Plant_type!="NG")
+sample_data_rich_noNG=as.data.frame(sample_data(PS_run2_rich_noNG))
+sample_data_rich_noNG$Plant_type=ordered(sample_data_rich_noNG$Plant_type,levels=c("Inoculum","Seed","PN","PA"))
+
+sample_data(PS_run2_rich_noNG)=sample_data_rich_noNG
+
+PS_relative=transform_sample_counts(PS_run2_rich_noNG, function(x) x/sum(x)*100)
+
+
+inoc_strains_PS_relative=prune_taxa(inoc_strains, PS_relative)
+inoc_strains_PS=prune_taxa(inoc_strains, inoc_strains_PS_relative)
+
+data_figure_rich=as.data.frame(otu_table(inoc_strains_PS))
+data_figure_rich<- tibble::rownames_to_column(data_figure_rich, "Sample_ID")
+#remove the ASV not found in strains data frame ... :  9034 ASV is not found 
+strains_found=strains_33[strains_33$CFBP!="9032",]
+data_figure_rich=pivot_longer(data_figure_rich,cols = strains_found$gyrB,names_to = "gyrB")
+colnames(data_figure_rich)=c("Sample_ID","gyrB","Relative_abundance")
+data_figure_rich=as.data.frame(data_figure_rich)
+
+data_figure_rich=left_join(data_figure_rich, strains_found,by="gyrB")
+sample_data_rich=as.data.frame(sample_data(inoc_strains_PS))
+sample_data_rich$Sample_ID=row.names(sample_data_rich)
+data_figure_rich=left_join(data_figure_rich,sample_data_rich,by="Sample_ID")
+
+write.csv(data_figure_rich,"submission/gitHub/data_figure_rich.csv")
+###
+
+
+data_figure_rich=read.csv("data_figure_rich.csv")
+data_figure_seed_rich=data_figure_rich[data_figure_rich$Type.y=="Seed",]
+
+SynCom_contribution_seed=aggregate(data_figure_seed_rich$Relative_abundance, by=list(Category=data_figure_seed_rich$Sample_ID), FUN=sum)
+colnames(SynCom_contribution_seed)=c("Sample_ID","SynCom_contribution")
+PS_inoc_seed=subset_samples(PS_run2_rich,Type=="Seed")
+
+#sample_data_seedling =tibble::rownames_to_column(sample_data(PS_inoc_seedlings), "Sample_ID")
+sample_data_seed=as.data.frame(sample_data(PS_inoc_seed))
+
+
+row.names(SynCom_contribution_seed)=SynCom_contribution_seed$Sample_ID
+SynCom_contribution3_seed=cbind(SynCom_contribution_seed,sample_data_seed,by="row.names",all.x=TRUE)
+
+SynCom_contribution3_seed_no_NG=SynCom_contribution3_seed[SynCom_contribution3_seed$Plant_type!="NG",]
+
+SynCom_contribution3_seed_no_NG_rich=summarySE(SynCom_contribution3_seed_no_NG, measurevar=c("SynCom_contribution"),groupvars=c("SynCom"), na.rm = TRUE)
+
+stat_SynCom_contribution2_rich
+
+plot_fig2F<- ggplot(SynCom_contribution3_seed_no_NG_rich, aes(x=SynCom, y=SynCom_contribution,color=SynCom))+ labs(color="Inoculation")+ 
+    geom_point(aes(size= 0.3),show.legend = F) +theme_classic()+scale_color_manual(values = SynCom_color)+
+  geom_errorbar(aes(ymin=SynCom_contribution-se, ymax=SynCom_contribution+se), width=.05, position=position_dodge(0.05))+scale_x_discrete(limits=c("0","3A", "3B","3C","5A", "5B","5C","8A", "8B","8C","11A", "11B","11C"),labels=c("0"="Control"))+theme(text = element_text(size = 20))+ylab("Cumulative Relative Abundance of \n SynCom  ASVs per seed (%)")+theme(text = element_text(size = 20))+xlab("SynCom")+ scale_y_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 20))+theme(legend.position="none")+geom_text(aes(label = Letters, y = SynCom_contribution + se), vjust = -1,show.legend = FALSE,size=6,color="black")+theme(axis.text.x = element_text(angle = 45,  hjust=1))+theme(axis.text.x = element_text(angle = 45,  hjust=1))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+theme(text = element_text(size = 20))
+
+#+geom_text(aes(label = STAT, y = SynCom_contribution + se), vjust = -1,show.legend = FALSE)
+
+mean(stat_SynCom_contribution2_rich2[2:13,]$SynCom_contribution)
+
+
+pp<-pairwise.wilcox.test(SynCom_contribution3_seed_no_NG$SynCom_contribution,g = SynCom_contribution3_seed_no_NG$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+letter_group_seed_syncom=as.data.frame.list(myletters)
+letter_group_seed_syncom=letter_group_seed_syncom[,1:2]
+letter_group_seed_syncom$SynCom=row.names(letter_group_seed_syncom)
+SynCom_contribution3_seed_no_NG_rich=merge(letter_group_seed_syncom,SynCom_contribution3_seed_no_NG_rich,by="SynCom")
+
+
+```
+
+
+###Panel G: Effect of SynCom on seed community: PCoA on seed from experiment 3
+
+```{r}
+
+dist= "bray"
+PS_run2_rich_inoc_seeds=subset_samples(PS_run2_rich_rar,Type=="Seed")
+                              
+sample_data(PS_run2_rich_inoc_seeds)$Richness=as.character(sample_data(PS_run2_rich_inoc_seeds)$Richness)
+
+
+ord_SynCom_inoc_seeds<- ordinate(PS_run2_rich_inoc_seeds, method = "PCoA", distance=dist)
+
+plot_ord_SynCom_inoc_seeds = plot_ordination(PS_run2_rich_inoc_seeds, ord_SynCom_inoc_seeds, type="sites", color="SynCom")+theme_bw()+geom_point(size =4)+scale_color_manual(values = SynCom_color,breaks=c("0","3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"),labels=c("0"="Control","3A"="3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"))+ggtitle("")+theme_classic()+ theme(text = element_text(size = 20))+scale_shape_manual(values=c(16))+scale_size_manual(values=c(4))+guides(colour = guide_legend(override.aes = list(size=6)))+ theme(text = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+theme(text = element_text(size = 20))+labs(shape = "Disinfection")+ theme(text = element_text(color="black", face="bold"))
+
+
+legend_fig2_G <- get_legend(plot_ord_SynCom_inoc_seeds)
+legend_fig2_G=ggarrange(legend_fig2_G)
+fig2_G=plot_ord_SynCom_inoc_seeds+theme(legend.position = "none")   
+
+
+
+dist_PS_run2_rich_inoc_seeds=phyloseq::distance(PS_run2_rich_inoc_seeds,method="bray")
+adonis2(dist_PS_run2_rich_inoc_seeds ~ sample_data(PS_run2_rich_inoc_seeds)$SynCom)
+
+
+
+```
+
+
+#Figure 3: seedlings
+
+###Panel A: Relative abundance of SynCom ASVs in seedlings depending on concentration (exp2)
+
+```{r}
+
+PS_relative_run1=transform_sample_counts(PS_run1_conc, function(x) x/sum(x)*100)
+inoc_strains_PS_run1=prune_taxa(strains_14$gyrB, PS_relative_run1)
+
+data_figure_conc=as.data.frame(otu_table(inoc_strains_PS_run1))
+
+data_figure_conc<- tibble::rownames_to_column(data_figure_conc, "Sample_ID")
+
+data_figure_conc=pivot_longer(data_figure_conc,cols = strains_14$gyrB,names_to = "gyrB")
+colnames(data_figure_conc)=c("Sample_ID","gyrB","Relative_abundance")
+data_figure_conc=as.data.frame(data_figure_conc)
+
+data_figure_conc=left_join(data_figure_conc, strains_14,by="gyrB")
+
+
+sample_data_conc=as.data.frame(sample_data(inoc_strains_PS_run1))
+sample_data_conc$Sample_ID=row.names(sample_data_conc)
+data_figure_conc=left_join(data_figure_conc,sample_data_conc,by="Sample_ID")
+
+
+data_figure_seedlings_conc=data_figure_conc[data_figure_conc$Type.y=="Seedling",]
+
+SynCom_contribution_conc=aggregate(data_figure_seedlings_conc$Relative_abundance, by=list(Category=data_figure_seedlings_conc$Sample_ID), FUN=sum)
+colnames(SynCom_contribution_conc)=c("Sample_ID","SynCom_contribution")
+
+
+PS_conc_seedlings=subset_samples(PS_run1_conc,Type=="Seedling")
+sample_data_seedling=as.data.frame(sample_data(PS_conc_seedlings))
+
+row.names(SynCom_contribution_conc)=SynCom_contribution_conc$Sample_ID
+SynCom_contribution_conc_3=cbind(SynCom_contribution_conc,sample_data_seedling,by="row.names",all.x=TRUE)
+
+SynCom_contribution_conc_3_noNG=SynCom_contribution_conc_3[SynCom_contribution_conc_3$Plant_type!="NG",]
+
+
+stat_SynCom_contribution2_conc_noNG=summarySE(SynCom_contribution_conc_3_noNG, measurevar=c("SynCom_contribution"),groupvars=c("Concentration"), na.rm = TRUE)
+
+stat_SynCom_contribution2_conc_noNG$Concentration=as.character(stat_SynCom_contribution2_conc_noNG$Concentration)
+
+
+#to get the mean 
+mean(stat_SynCom_contribution2_conc_noNG[2:5,]$SynCom_contribution)
+
+#stat
+
+pp<-pairwise.wilcox.test(SynCom_contribution_conc_3_noNG$SynCom_contribution,g = SynCom_contribution_conc_3_noNG$Concentration,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+letter_group_seed_syncom_exp2=as.data.frame.list(myletters)
+letter_group_seed_syncom_exp2=letter_group_seed_syncom_exp2[,1:2]
+letter_group_seed_syncom_exp2$Concentration=row.names(letter_group_seed_syncom_exp2)
+stat_SynCom_contribution_exp2=merge(letter_group_seed_syncom_exp2,stat_SynCom_contribution2_conc_seed,by="Concentration")
+
+stat_SynCom_contribution2_conc_noNG$STAT=c("a","b","c","c","c")
+
+
+plot_alpha_PS_run1_conc_bis_noNG <- ggplot(stat_SynCom_contribution2_conc_noNG, aes(x=Concentration, y=SynCom_contribution,color=Concentration))+ labs(color="Inoculation")+ 
+    geom_point(size= 5) +theme_classic()+
+  geom_errorbar(aes(ymin=SynCom_contribution-se, ymax=SynCom_contribution+se), width=.1, position=position_dodge(0.1))+scale_color_manual(values = concentration_color)+ylab("Cumulative Relative Abundance of \n SynCom  ASVs per seedling (%)")+theme(text = element_text(size = 20))+xlab("Inoculum concentration (CFU/mL)")+geom_text(aes(label = STAT, y = SynCom_contribution + se), vjust = -1,show.legend = FALSE,size=6,colour="black")+ scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))+theme(legend.position="none")+scale_x_discrete(limits=c("0","5", "6","7","8"),labels=c("0"=expression(bold("Control")),"5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))+theme(axis.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+plot_alpha_PS_run1_conc_bis_noNG
+#STAT contribution
+#####
+
+pairwise.wilcox.test(SynCom_contribution_conc_3_noNG$SynCom_contribution,g = SynCom_contribution_conc_3_noNG$Concentration,paired = F,p.adjust.method = "BH")
+pairwise.t.test(SynCom_contribution_conc_3_noNG$x,g = SynCom_contribution_conc_3_noNG$Concentration,paired = F,p.adjust.method = "none")
+
+normality=hist(SynCom_contribution_conc_3_noNG$x
+     ,breaks=8
+     , col='red'
+     , xlab='Size'
+     , ylab='Number')
+
+
+anova_concentration_contribution=aov(SynCom_contribution~Concentration,data=SynCom_contribution_conc_3_noNG)
+summary(anova_concentration_contribution) #0.0203 *
+library(multcomp)
+#####
+library(multcompView)
+Tukey_concentration_contribution=TukeyHSD(anova_concentration_contribution, conf.level=.95) 
+letter_group=multcompLetters(Tukey_concentration_contribution$Concentration[,4]<0.05)
+letter_group2=as.data.frame.list(letter_group)
+letter_group2$Concentration=row.names(letter_group2)
+stat_SynCom_contribution2_conc_noNG_2=merge(stat_SynCom_contribution2_conc_noNG,letter_group2,by="Concentration")
+
+mod2<-lm(SynCom_contribution_conc_3_noNG$x~SynCom_contribution_conc_3_noNG$Concentration)
+drop1(mod2,test='F')
+summary(mod2)
+
+```
+
+
+
+###Panel B: Relative abundance of SynCom ASVs in seedlings depending on SynCom composition (exp3)
+
+```{r}
+inoc_strains=strains_33$gyrB
+
+pedobacter_9032="TGATACTGGTGTAAAGGGTTTGCATCATTTGGTTTATGAGGTTGTGGATAACTCTATTGATGAGGCTTTAGCCGGTCATGCAGATACAATCGACGTCAGGATTTTAGAAGGAAACTCCATCCGGGTTGAAGATAACGGTCGTGGTATTCCAACCGGAATTAATACAAAAGAAAATAAATCGGCACTAGAAATCGTAATGACGGTTCTACACGCGGGTGGTAAATTTGATAAGGATACTTATAAAGTT"
+
+PS_run2_rich_noNG=subset_samples(PS_run2_rich,Plant_type!="NG")
+sample_data_rich_noNG=as.data.frame(sample_data(PS_run2_rich_noNG))
+sample_data_rich_noNG$Plant_type=ordered(sample_data_rich_noNG$Plant_type,levels=c("Inoculum","Seed","PN","PA"))
+
+sample_data(PS_run2_rich_noNG)=sample_data_rich_noNG
+
+PS_relative=transform_sample_counts(PS_run2_rich_noNG, function(x) x/sum(x)*100)
+
+
+inoc_strains_PS_relative=prune_taxa(inoc_strains, PS_relative)
+inoc_strains_PS=prune_taxa(inoc_strains, inoc_strains_PS_relative)
+
+data_figure_rich=as.data.frame(otu_table(inoc_strains_PS))
+data_figure_rich<- tibble::rownames_to_column(data_figure_rich, "Sample_ID")
+#remove the ASV not found in strains data frame ... :  9034 ASV is not found 
+strains_found=strains_33[strains_33$CFBP!="9032",]
+data_figure_rich=pivot_longer(data_figure_rich,cols = strains_found$gyrB,names_to = "gyrB")
+colnames(data_figure_rich)=c("Sample_ID","gyrB","Relative_abundance")
+data_figure_rich=as.data.frame(data_figure_rich)
+
+data_figure_rich=left_join(data_figure_rich, strains_found,by="gyrB")
+sample_data_rich=as.data.frame(sample_data(inoc_strains_PS))
+sample_data_rich$Sample_ID=row.names(sample_data_rich)
+data_figure_rich=left_join(data_figure_rich,sample_data_rich,by="Sample_ID")
+
+data_figure_seedlings_rich=data_figure_rich[data_figure_rich$Type.y=="Seedling",]
+
+SynCom_contribution=aggregate(data_figure_seedlings_rich$Relative_abundance, by=list(Category=data_figure_seedlings_rich$Sample_ID), FUN=sum)
+colnames(SynCom_contribution)=c("Sample_ID","SynCom_contribution")
+PS_inoc_seedlings=subset_samples(inoc_strains_PS,Type=="Seedling")
+
+#sample_data_seedling =tibble::rownames_to_column(sample_data(PS_inoc_seedlings), "Sample_ID")
+sample_data_seedling=as.data.frame(sample_data(PS_inoc_seedlings))
+
+
+row.names(SynCom_contribution)=SynCom_contribution$Sample_ID
+SynCom_contribution_seedling=SynCom_contribution[]
+SynCom_contribution3=cbind(SynCom_contribution,sample_data_seedling,by="row.names",all.x=TRUE)
+
+SynCom_contribution3_noNG=SynCom_contribution3[SynCom_contribution3$Plant_type!="NG",]
+
+stat_SynCom_contribution2_rich=summarySE(SynCom_contribution3_noNG, measurevar=c("SynCom_contribution"),groupvars=c("SynCom"), na.rm = TRUE)
+
+stat_SynCom_contribution2_rich
+
+plot_alpha_PS_run2_rich_bis <- ggplot(stat_SynCom_contribution2_rich2, aes(x=SynCom, y=SynCom_contribution,color=SynCom))+ labs(color="Inoculation")+ 
+    geom_point(aes(size= 0.3),show.legend = F) +theme_classic()+scale_color_manual(values = SynCom_color)+
+  geom_errorbar(aes(ymin=SynCom_contribution-se, ymax=SynCom_contribution+se), width=.05, position=position_dodge(0.05))+scale_x_discrete(limits=c("0","3A", "3B","3C","5A", "5B","5C","8A", "8B","8C","11A", "11B","11C"),labels=c("0"="Control"))+theme(text = element_text(size = 20))+xlab("SynCom")+ylab("Cumulative Relative Abundance of \n SynCom  ASVs per seedling (%)")+theme(text = element_text(size = 20))+ scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))+theme(legend.position="none")+geom_text(aes(label = Letters, y = SynCom_contribution + se), vjust = -1,show.legend = FALSE,size=6,color="black")+theme(axis.text.x = element_text(angle = 45,  hjust=1))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+#+geom_text(aes(label = STAT, y = SynCom_contribution + se), vjust = -1,show.legend = FALSE)
+
+mean(stat_SynCom_contribution2_rich2[2:13,]$SynCom_contribution)
+
+SynCom_contribution3_noNG$SynCom_contribution
+pp<-pairwise.wilcox.test(SynCom_contribution3_noNG$SynCom_contribution,g = SynCom_contribution3_noNG$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+letter_group_seedling_syncom=as.data.frame.list(myletters)
+letter_group_seedling_syncom=letter_group_seedling_syncom[,1:2]
+letter_group_seedling_syncom$SynCom=row.names(letter_group_seedling_syncom)
+stat_SynCom_contribution2_rich2=merge(letter_group_seedling_syncom,stat_SynCom_contribution2_rich,by="SynCom")
+
+```
+
+
+###Panel C: Beta dispersion on seedling from experiment 2 
+
+```{r}
+
+PS_run1_conc_rar=rarefy_even_depth(PS_run1_conc, sample.size =6000 ) #T-R1-J8-3 T-R1-J8C6-2 removed , 2OTUs were removed because they are no longer present in any sample after random subsampling
+
+#Seedlings
+SV_16S_use1_seedlings=subset_samples(PS_run1_conc_rar, Type=="Seedling"&Emergence==1)
+Alltreatments_seedlings=as.data.frame(sample_data(SV_16S_use1_seedlings))
+head(Alltreatments_seedlings)
+matrix_seedlings<-as.data.frame(otu_table(SV_16S_use1_seedlings))
+matrix_seedlings<-matrix_seedlings[,colSums(matrix_seedlings)>=1]
+## Calculate multivariate dispersions
+dis <- vegdist(matrix_seedlings)
+mod <- betadisper(dis, Alltreatments_seedlings$Concentration)
+mod
+## Perform test
+anova(mod)
+## Permutation test for F
+permutest(mod, pairwise = TRUE, permutations = 99)
+## Tukey's Honest Significant Differences
+mod.HSD <- TukeyHSD(mod)
+plot(mod.HSD)
+## Plot the groups and distances to centroids
+plot(mod)
+df_seedling <- data.frame(Distance_to_centroid=mod$distances,Group=mod$group)
+groups <- mod$group
+fig3C<- ggplot(data=df_seedling,aes(x=Group,y=Distance_to_centroid,fill=groups))+ geom_boxplot(alpha=0.5)+
+  geom_point(aes(x=Group, y=Distance_to_centroid, color=groups, fill=groups), 
+             position=position_jitterdodge(jitter.width=0.5, dodge.width=0.7), 
+             size=4, alpha=1)+theme_classic()+scale_fill_manual(values=concentration_color)+scale_color_manual(values=concentration_color)+theme(text = element_text(size = 20))+ labs( color = "Condition")+ xlab("Inoculum concentration (CFU/mL)")+ylab("Beta-dispersion: distance to centroid")+theme(legend.position = "none") +ggtitle("")+theme(plot.title = element_text(hjust = 0.5))+scale_x_discrete(labels=c("0"=expression(bold("Control")),"5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))+annotate("text", x=1, label = expression(bold("a")), y =  0.8, size=5)+annotate("text", x=2, label = expression(bold("b")), y =  0.75, size=5)+annotate("text", x=3, label = expression(bold("b")), y =  0.75, size=5)+annotate("text", x=4, label = expression(bold("b")), y =  0.75, size=5)+annotate("text", x=5, label = expression(bold("b")), y =  0.75, size=5)+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+df_seedling$STAT[df_seedling$Group=='0'] <- "a"
+df_seedling$STAT[df_seedling$Group=='5'] <- "b"
+df_seedling$STAT[df_seedling$Group=='6'] <- "b"
+df_seedling$STAT[df_seedling$Group=='7'] <- "b"
+df_seedling$STAT[df_seedling$Group=='8'] <- "b"
+
+```
+
+###Panel D: Correlation CFU on seeds - SynCom contribution to seedling from experiment 3
+
+```{r}
+
+SynCom_contribution3_noNG
+
+data_CFU_run2=read.csv2(file="~/Documents/Thèse/Data/Run1_TestSynCom/Data_SynCom_inoc_run2.csv",sep=";",h=T)
+data_CFU_run2$log_pop_sample=as.numeric(data_CFU_run2$log_pop_sample)
+
+
+data_stat_CFU_stat_run2=summarySE(data_CFU_run2, measurevar=c("log_pop_sample"),groupvars=c("Category","Sample_type"), na.rm = TRUE)
+
+labels_CFU=c("Strains", "Inoculum", "Inoculated seeds","Soil")
+names(labels_CFU) <- c("Inoc_strain", "Inoc_SynCom", "Soaked_seed","Soil")
+
+data_stat_CFU_stat_NOSOIL_run2=data_stat_CFU_stat_run2[data_stat_CFU_stat_run2$Sample_type!="Soil",]
+
+
+CFU_syncom=data_stat_CFU_stat_NOSOIL_run2[data_stat_CFU_stat_NOSOIL_run2$Sample_type=="Soaked_seed",]
+CFU_syncom$SynCom=CFU_syncom$Category
+
+SynCom_contribution3=cbind(SynCom_contribution,sample_data_seedling_emerged,by="row.names",all.x=TRUE)
+
+CORRELATION_CFU_Contribution_data=left_join(SynCom_contribution3,CFU_syncom,by="SynCom")
+
+CORRELATION_CFU_Contribution_data_nocontrol=CORRELATION_CFU_Contribution_data[CORRELATION_CFU_Contribution_data$SynCom!=0,]
+
+PLOT_CORRELATION_CFU_Contribution=ggplot(CORRELATION_CFU_Contribution_data_nocontrol,aes(x=log_pop_sample,y=SynCom_contribution))+geom_point(aes(color=SynCom),size=5)+geom_smooth(method=lm)+theme_classic()+ylab("Cumulative Relative Abundance of \n SynCom  ASVs per seedling (%)")+xlab("Community size of inoculated \n seeds (CFU/seed)")+theme(text = element_text(size = 20))+scale_color_manual(values=SynCom_color,breaks=c("3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C")) +theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+scale_x_continuous(breaks =c(5,6,7,8),labels=c("5"=expression(bold(paste("10"^"5"))), "6"=expression(bold(paste("10"^"6"))),"7"=expression(bold(paste("10"^"7"))),"8"=expression(bold(paste("10"^"8")))))
+#+ scale_x_continuous(limits = c(4, 8), breaks = seq(4, 8, by = 1))
+legend_fig3D <- get_legend(PLOT_CORRELATION_CFU_Contribution)
+legend_fig3D=ggarrange(legend_fig3D)
+fig3D=PLOT_CORRELATION_CFU_Contribution+theme(legend.position = "none")  
+
+#STAT
+
+model=lm(log10(CORRELATION_CFU_Contribution_data_nocontrol$SynCom_contribution)~CORRELATION_CFU_Contribution_data_nocontrol$log_pop_sample)
+anova(model)
+summary(model)
+cor(CORRELATION_CFU_Contribution_data$SynCom_contribution, CORRELATION_CFU_Contribution_data$log_pop_sample, method = c("pearson"))
+
+
+```
+
+###Panel E: PCoA on seedling of experiment 2
+```{r}
+##seedling exp2
+PS_run1_conc
+PS_run1_conc_rar
+PS_seedlings_exp2_emerged_nocontrol=subset_samples(PS_run1_conc_rar,Type=="Seedling"&Emergence==1&Concentration!=0)
+
+ord_SynCom_seedlings_exp2<- ordinate(PS_seedlings_exp2_emerged_nocontrol, method = "PCoA", distance="bray")
+
+plot_ord_SynCom_seedlings_exp2 = plot_ordination(PS_seedlings_exp2_emerged_nocontrol, ord_SynCom_seedlings_exp2, type="sites", color="Concentration")+theme_bw()+geom_point(shape=16,size = 5)+theme_classic()+ theme(text = element_text(size = 20))+scale_color_manual(values = concentration_color,breaks=c("5","6","7","8"),labels=c("5"=expression(bold(paste("10"^"5"," CFU/mL"))), "6"=expression(bold(paste("10"^"6"," CFU/mL"))),"7"=expression(bold(paste("10"^"7"," CFU/mL"))),"8"=expression(bold(paste("10"^"8"," CFU/mL")))))+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+legend_fig3E <- get_legend(plot_ord_SynCom_seedlings_exp2)
+legend_fig3E=ggarrange(legend_fig3E)
+fig3E=plot_ord_SynCom_seedlings_exp2+theme(legend.position = "none") 
+
+
+dist_PS_seedlings_exp2=phyloseq::distance(PS_seedlings_exp2_emerged_nocontrol,method="bray")
+adonis2(dist_PS_seedlings_exp2 ~ sample_data(PS_seedlings_exp2_emerged_nocontrol)$Concentration) #0.11
+
+```
+
+
+###Panel F: PCoA on seedling of experiment 3
+
+```{r}
+##seedling exp3
+PS_run2_rich_seedlings_emerged=subset_samples(PS_run2_rich_rar,Type=="Seedling"&Emergence==1)
+sample_data(PS_run2_rich_seedlings_emerged)$Richness=as.character(sample_data(PS_run2_rich_seedlings_emerged)$Richness)
+
+ord_SynCom_seedlings_exp3<- ordinate(PS_run2_rich_seedlings_emerged, method = "PCoA", distance="bray")
+
+plot_ord_SynCom_seedlings_exp3 = plot_ordination(PS_run2_rich_seedlings_emerged, ord_SynCom_seedlings_exp3, type="sites", color="SynCom")+theme_bw()+geom_point(shape=16,size = 5)+theme_classic()+ theme(text = element_text(size = 20))+scale_color_manual(values = SynCom_color,breaks=c("0","3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"),labels=c("0"="Control","3A"="3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"))+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+legend_fig3F <- get_legend(plot_ord_SynCom_seedlings_exp3)
+legend_fig3F=ggarrange(legend_fig3F)
+fig3F=plot_ord_SynCom_seedlings_exp3+theme(legend.position = "none") 
+
+dist_PS_run2_rich_seedlings=phyloseq::distance(PS_run2_rich_seedlings_emerged,method="bray")
+adonis2(dist_PS_run2_rich_seedlings ~ sample_data(PS_run2_rich_seedlings_emerged)$SynCom) # R2 = 0.79841
+
+```
+
+
+###Figure 4: Composition of inocula, seeds and seedlings
+
+For this plot, we use the data_figure_rich dataframe already made for figure 2-F and figure 3-F
+For each condition we will create a 'Other strains' category which correspond to all the strains that have not been inoculated
+
+```{r}
+
+library(forcats)
+data_figure_rich$SynCom_f = factor(data_figure_rich$SynCom, levels=c('0','3A','3B','3C','5A','5B','5C','8A','8B','8C','11A','11B','11C'))
+
+labels <- c("I", "Seeds", "Seedlings")
+names(labels) <- c("Inoculum", "Seed", "Seedling")
+data_figure_rich$Plant_type_f = factor(data_figure_rich$Type.y, levels=c("Inoculum","Seed","Seedling"))
+
+data_figure_rich2=data_figure_rich[data_figure_rich$Emergence!="0",] #remove not germinated seeds
+
+data_figure_rich2_test=data_figure_rich2
+
+# control composition
+
+control_comp=data_figure_rich[data_figure_rich$SynCom_f=="0"&data_figure_rich$Type.y!="Soil",]
+
+sous_tableaux <- list()
+
+for (sample in unique(control_comp$Sample_ID)) {
+  # Select the lines corresponding to the current category
+  sous_tableau <- control_comp[control_comp$Sample_ID == sample, ]
+  
+  # Add a new row to the subtable
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=control_comp[control_comp$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  # Store updated subarray in list
+  sous_tableaux[[sample]] <- sous_tableau
+}
+control_comp <- do.call(rbind, sous_tableaux)
+
+library(forcats)
+control_comp$Strain_Figure_name=fct_relevel(control_comp$Strain_Figure_name, "Other strains")
+
+plot_control_comp=ggplot(control_comp, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("Control")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(control_comp$Strain_Figure_name)[unique(control_comp$Strain_Figure_name)!= "Other strains"]), "Other strains"))+guides(fill='none')
+
+#SynCom3A
+
+compo_3A=data_figure_rich[data_figure_rich$SynCom_f=="3A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS3A=="Yes",]
+
+sous_tableaux <- list()
+
+for (sample in unique(compo_3A$Sample_ID)) {
+ 
+  sous_tableau <- compo_3A[compo_3A$Sample_ID == sample, ]
+  
+ 
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_3A[compo_3A$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_3A <- do.call(rbind, sous_tableaux)
+compo_3A$Strain_Figure_name=fct_relevel(compo_3A$Strain_Figure_name, "Other strains")
+
+
+plot_compo3A=ggplot(compo_3A, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("3A")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_3A$Strain_Figure_name)[unique(compo_3A$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+#SynCom3B
+
+compo_3B=data_figure_rich[data_figure_rich$SynCom_f=="3B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS3B=="Yes",]
+
+sous_tableaux <- list()
+
+for (sample in unique(compo_3B$Sample_ID)) {
+  
+  sous_tableau <- compo_3B[compo_3B$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_3B[compo_3B$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_3B <- do.call(rbind, sous_tableaux)
+compo_3B$Strain_Figure_name=fct_relevel(compo_3B$Strain_Figure_name, "Other strains")
+
+plot_compo3B=ggplot(compo_3B, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("3B")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_3B$Strain_Figure_name)[unique(compo_3B$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom3C
+
+compo_3C=data_figure_rich[data_figure_rich$SynCom_f=="3C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS3C=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_3C$Sample_ID)) {
+  sous_tableau <- compo_3C[compo_3C$Sample_ID == sample, ]
+  
+
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_3C[compo_3C$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_3C <- do.call(rbind, sous_tableaux)
+compo_3C$Strain_Figure_name=fct_relevel(compo_3C$Strain_Figure_name, "Other strains")
+
+
+plot_compo3C=ggplot(compo_3C, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("3C")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_3C$Strain_Figure_name)[unique(compo_3C$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom5A
+
+
+compo_5A=data_figure_rich[data_figure_rich$SynCom_f=="5A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS5A=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_5A$Sample_ID)) {
+  
+  sous_tableau <- compo_5A[compo_5A$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_5A[compo_5A$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_5A <- do.call(rbind, sous_tableaux)
+compo_5A$Strain_Figure_name=fct_relevel(compo_5A$Strain_Figure_name, "Other strains")
+
+
+plot_compo5A=ggplot(compo_5A, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("5A")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_5A$Strain_Figure_name)[unique(compo_5A$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom5B
+
+compo_5B=data_figure_rich[data_figure_rich$SynCom_f=="5B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS5B=="Yes",]
+
+sous_tableaux <- list()
+
+for (sample in unique(compo_5B$Sample_ID)) {
+  
+  sous_tableau <- compo_5B[compo_5B$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_5B[compo_5B$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+ 
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_5B <- do.call(rbind, sous_tableaux)
+compo_5B$Strain_Figure_name=fct_relevel(compo_5B$Strain_Figure_name, "Other strains")
+
+plot_compo5B=ggplot(compo_5B, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("5B")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_5B$Strain_Figure_name)[unique(compo_5B$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom5C
+
+
+compo_5C=data_figure_rich[data_figure_rich$SynCom_f=="5C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS5C=="Yes",]
+
+sous_tableaux <- list()
+
+for (sample in unique(compo_5C$Sample_ID)) {
+ 
+  sous_tableau <- compo_5C[compo_5C$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_5C[compo_5C$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_5C <- do.call(rbind, sous_tableaux)
+compo_5C$Strain_Figure_name=fct_relevel(compo_5C$Strain_Figure_name, "Other strains")
+
+plot_compo5C=ggplot(compo_5C, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("5C")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_5C$Strain_Figure_name)[unique(compo_5C$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom8A
+
+compo_8A=data_figure_rich[data_figure_rich$SynCom_f=="8A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS8A=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_8A$Sample_ID)) {
+  
+  sous_tableau <- compo_8A[compo_8A$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_8A[compo_8A$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+ 
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_8A <- do.call(rbind, sous_tableaux)
+compo_8A$Strain_Figure_name=fct_relevel(compo_8A$Strain_Figure_name, "Other strains")
+
+plot_compo8A=ggplot(compo_8A, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("8A")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_8A$Strain_Figure_name)[unique(compo_8A$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+#SynCom8B
+
+compo_8B=data_figure_rich[data_figure_rich$SynCom_f=="8B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS8B=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_8B$Sample_ID)) {
+ 
+  sous_tableau <- compo_8B[compo_8B$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_8B[compo_8B$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_8B <- do.call(rbind, sous_tableaux)
+compo_8B$Strain_Figure_name=fct_relevel(compo_8B$Strain_Figure_name, "Other strains")
+
+plot_compo8B=ggplot(compo_8B, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("8B")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_8B$Strain_Figure_name)[unique(compo_8B$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+#SynCom8C
+
+compo_8C=data_figure_rich[data_figure_rich$SynCom_f=="8C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS8C=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_8C$Sample_ID)) {
+  
+  sous_tableau <- compo_8C[compo_8C$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_8C[compo_8C$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_8C <- do.call(rbind, sous_tableaux)
+compo_8C$Strain_Figure_name=fct_relevel(compo_8C$Strain_Figure_name, "Other strains")
+
+plot_compo8C=ggplot(compo_8C, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("8C")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_8C$Strain_Figure_name)[unique(compo_8C$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+#SynCom11A
+
+
+compo_11A=data_figure_rich[data_figure_rich$SynCom_f=="11A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS11A=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_11A$Sample_ID)) {
+  
+  sous_tableau <- compo_11A[compo_11A$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_11A[compo_11A$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_11A <- do.call(rbind, sous_tableaux)
+compo_11A$Strain_Figure_name=fct_relevel(compo_11A$Strain_Figure_name, "Other strains")
+
+plot_compo11A=ggplot(compo_11A, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("11A")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_11A$Strain_Figure_name)[unique(compo_11A$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom11B
+
+compo_11B=data_figure_rich[data_figure_rich$SynCom_f=="11B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS11B=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_11B$Sample_ID)) {
+  
+  sous_tableau <- compo_11B[compo_11B$Sample_ID == sample, ]
+  
+  
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_11B[compo_11B$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+ 
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_11B <- do.call(rbind, sous_tableaux)
+compo_11B$Strain_Figure_name=fct_relevel(compo_11B$Strain_Figure_name, "Other strains")
+
+plot_compo11B=ggplot(compo_11B, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("11B")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_11B$Strain_Figure_name)[unique(compo_11B$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+#SynCom11C
+
+compo_11C=data_figure_rich[data_figure_rich$SynCom_f=="11C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS11C=="Yes",]
+sous_tableaux <- list()
+
+for (sample in unique(compo_11C$Sample_ID)) {
+  
+  sous_tableau <- compo_11C[compo_11C$Sample_ID == sample, ]
+  
+ 
+  nouvelle_ligne <- data.frame(Sample_ID = sample, Relative_abundance = 100-sum(sous_tableau$Relative_abundance),Strain_Figure_name="Other strains",Plant_type_f=compo_11C[compo_11C$Sample_ID == sample,]$Plant_type_f[1])
+  sous_tableau <- bind_rows(sous_tableau, nouvelle_ligne)
+  
+  
+  sous_tableaux[[sample]] <- sous_tableau
+}
+compo_11C <- do.call(rbind, sous_tableaux)
+compo_11C$Strain_Figure_name=fct_relevel(compo_11C$Strain_Figure_name, "Other strains")
+
+plot_compo11C=ggplot(compo_11C, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("11C")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance (%)")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Inoculated strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=1))+scale_fill_manual(values=tax_colors,limits=c(as.vector(unique(compo_11C$Strain_Figure_name)[unique(compo_11C$Strain_Figure_name)!= "Other strains"]), "Other strains"))
+
+
+library(cowplot)
+compoFIGURE=  plot_grid( plot_compo3A + theme(legend.position="none"),
+           plot_compo3B + theme(legend.position="none"),
+           plot_compo3C+ theme(legend.position="none"),
+           plot_compo5A+ theme(legend.position="none"),
+           plot_compo5B+ theme(legend.position="none"),
+           plot_compo5C+ theme(legend.position="none"),
+           plot_compo8A+ theme(legend.position="none"),
+           plot_compo8B+ theme(legend.position="none"),
+           plot_compo8C+ theme(legend.position="none"),
+           plot_compo11A+ theme(legend.position="none"),
+           plot_compo11B+ theme(legend.position="none"),
+           plot_compo11C+ theme(legend.position="none"),
+           align = 'vh',
+           hjust = -1,
+           nrow = 4
+           )
+
+
+data_figure_rich_fake=rbind(data_figure_rich,compo_3A) #just to add "Other strains" in the data set
+just_to_get_legend=ggplot(data_figure_rich_fake, aes(fill=Strain_Figure_name, y=Relative_abundance, x= Sample_ID)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+theme_classic()+
+    geom_bar(position="stack", stat="identity")+ggtitle("3A")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+ylab("Relative abundance")+xlab("Samples")+theme(axis.text.x = element_text(size = 5))+labs(fill='Strains')+facet_grid(~Plant_type_f,scales = "free",space="free_x",labeller =labeller(Plant_type_f=labels))+guides(fill=guide_legend(ncol=2))+scale_fill_manual(values=tax_colors,breaks=names(tax_colors))
+
+legend_compo <- get_legend(just_to_get_legend + theme(legend.position="bottom"))
+print(legend_compo)
+
+just_legend=ggarrange(legend_compo)
+
+COMPO_FIGURE_FINALE=ggarrange(compoFIGURE,legend_compo,widths = c(3, 1))
+
+```
+
+
+#Figure5
+###Panel A: Transmission rate of each strain to seedling using experiment 3
+
+```{r}
+#
+compo_3A=data_figure_rich[data_figure_rich$SynCom_f=="3A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS3A=="Yes",]
+compo_3B=data_figure_rich[data_figure_rich$SynCom_f=="3B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS3B=="Yes",]
+compo_3C=data_figure_rich[data_figure_rich$SynCom_f=="3C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS3C=="Yes",]
+compo_5A=data_figure_rich[data_figure_rich$SynCom_f=="5A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS5A=="Yes",]
+compo_5B=data_figure_rich[data_figure_rich$SynCom_f=="5B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS5B=="Yes",]
+compo_5C=data_figure_rich[data_figure_rich$SynCom_f=="5C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS5C=="Yes",]
+compo_8A=data_figure_rich[data_figure_rich$SynCom_f=="8A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS8A=="Yes",]
+compo_8B=data_figure_rich[data_figure_rich$SynCom_f=="8B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS8B=="Yes",]
+compo_8C=data_figure_rich[data_figure_rich$SynCom_f=="8C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS8C=="Yes",]
+compo_11A=data_figure_rich[data_figure_rich$SynCom_f=="11A"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS11A=="Yes",]
+compo_11B=data_figure_rich[data_figure_rich$SynCom_f=="11B"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS11B=="Yes",]
+compo_11C=data_figure_rich[data_figure_rich$SynCom_f=="11C"&data_figure_rich$Type.y!="Soil"&data_figure_rich$CS11C=="Yes",]
+
+
+
+compo_exp3=rbind(compo_3A,compo_3B,compo_3C,compo_5A,compo_5B,compo_5C,compo_8A,compo_8B,compo_8C,compo_11A,compo_11B,compo_11C)
+
+#get sample list
+List_samples_exp3=unique(compo_exp3$Sample_ID)
+
+#initialization of a data frame called final_sample_ranking_dataframe_exp3 that reorder rank and transmission of each strain
+final_sample_ranking_dataframe_exp3 <- subset(compo_exp3, Sample_ID == "CS3-A")
+#reorder strain to get the rank
+final_sample_ranking_dataframe_exp3=arrange(final_sample_ranking_dataframe_exp3,-Relative_abundance)
+# not transmitted if relative abundance = 0; transmitted is not
+final_sample_ranking_dataframe_exp3$Transmitted <- ifelse(final_sample_ranking_dataframe_exp3$Relative_abundance == 0, 0, 1)
+#add rank
+final_sample_ranking_dataframe_exp3$Rank=c(1,2,3)
+#rank is 0 if not transmitted
+final_sample_ranking_dataframe_exp3$Rank=ifelse(final_sample_ranking_dataframe_exp3$Relative_abundance == 0, 0,final_sample_ranking_dataframe_exp3$Rank)
+  
+#make a loop to do the same for each sample, we have different conditions according to SynCom richness
+for (valeur in 2:length(List_samples_exp3)) {
+  sample_ranking_dataframe <- subset(compo_exp3, Sample_ID == List_samples_exp3[valeur])
+  sample_ranking_dataframe=arrange(sample_ranking_dataframe,-Relative_abundance)
+  if (nrow(sample_ranking_dataframe)==3){
+      sample_ranking_dataframe$Rank=c(1,2,3)
+      sample_ranking_dataframe$Rank=ifelse(sample_ranking_dataframe$Relative_abundance == 0, 0,sample_ranking_dataframe$Rank)
+  }
+  if (nrow(sample_ranking_dataframe)==5){
+      sample_ranking_dataframe$Rank=c(1,2,3,4,5)
+      sample_ranking_dataframe$Rank=ifelse(sample_ranking_dataframe$Relative_abundance == 0, 0,sample_ranking_dataframe$Rank)
+  }
+  if (nrow(sample_ranking_dataframe)==8){
+      sample_ranking_dataframe$Rank=c(1,2,3,4,5,6,7,8)
+      sample_ranking_dataframe$Rank=ifelse(sample_ranking_dataframe$Relative_abundance == 0, 0,sample_ranking_dataframe$Rank)
+  }
+  if (nrow(sample_ranking_dataframe)==10){
+      sample_ranking_dataframe$Rank=c(1,2,3,4,5,6,7,8,9,10) #special case for the SynCom 11A because 1 strain (9032) is not found (even in the inoculum)
+      sample_ranking_dataframe$Rank=ifelse(sample_ranking_dataframe$Relative_abundance == 0, 0,sample_ranking_dataframe$Rank)
+  }
+  if (nrow(sample_ranking_dataframe)==11){
+      sample_ranking_dataframe$Rank=c(1,2,3,4,5,6,7,8,9,10,11)
+      sample_ranking_dataframe$Rank=ifelse(sample_ranking_dataframe$Relative_abundance == 0, 0,sample_ranking_dataframe$Rank)
+  }
+  sample_ranking_dataframe$Transmitted <- ifelse(sample_ranking_dataframe$Relative_abundance == 0, 0, 1)
+  final_sample_ranking_dataframe_exp3=rbind(final_sample_ranking_dataframe_exp3,sample_ranking_dataframe)
+}
+
+#filter to get only emerged seedling
+final_sample_ranking_dataframe_exp3_emerged=final_sample_ranking_dataframe_exp3[final_sample_ranking_dataframe_exp3$Emergence=="1",]
+
+# calculate transmission rate depending on strain, SynCom, richness, sample type 
+stat_final_sample_ranking_dataframe_exp3=summarySE(final_sample_ranking_dataframe_exp3,measurevar=c("Transmitted"),groupvars=c("SynCom","Richness","Strain_Figure_name","Plant_type_f"), na.rm = TRUE)
+
+#stat_final_sample_ranking_dataframe_not_in_INOC=stat_final_sample_ranking_dataframe_exp3[stat_final_sample_ranking_dataframe_exp3$Type.y=="Inoculum"&stat_final_sample_ranking_dataframe_exp3$Transmitted=="0",]
+
+
+
+#transmission only to seedling
+stat_final_sample_ranking_dataframe_exp3_seedling=stat_final_sample_ranking_dataframe_exp3[stat_final_sample_ranking_dataframe_exp3$Plant_type_f=="Seedling",]
+
+#get the mean for each strain to reorder plot
+Mean_strain_transmission_seedling_exp3=summarySE(stat_final_sample_ranking_dataframe_exp3_seedling, measurevar=c("Transmitted"),groupvars=c("Strain_Figure_name"), na.rm = TRUE)
+Mean_strain_transmission_seedling_exp3$Mean_transmission=Mean_strain_transmission_seedling_exp3$Transmitted
+Mean_strain_transmission_seedling_exp3$Transmitted=NULL
+
+Mean_strain_transmission_seedling_exp3=arrange(Mean_strain_transmission_seedling_exp3,Mean_transmission)
+
+#concatenate dataframe
+stat_final_sample_ranking_dataframe_exp3_seedling=left_join(stat_final_sample_ranking_dataframe_exp3_seedling,Mean_strain_transmission_seedling_exp3,by="Strain_Figure_name")
+
+
+stat_final_sample_ranking_dataframe_exp3_seedling=stat_final_sample_ranking_dataframe_exp3_seedling[stat_final_sample_ranking_dataframe_exp3_seedling$Plant_type_f=="Seedling",]
+
+stat_final_sample_ranking_dataframe_exp3_seedling=arrange(stat_final_sample_ranking_dataframe_exp3_seedling,-Mean_transmission)
+
+
+plot_strain_transmission_seedling_exp3=ggplot(data = stat_final_sample_ranking_dataframe_exp3_seedling,aes(x=Transmitted*100,y= Strain_Figure_name,color=SynCom))+geom_point(position=position_dodge(width=0.5),size=5)+theme_classic()+theme(text = element_text(size = 20))+labs(color="SynCom")+ scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20))+aes(y=reorder(Strain_Figure_name,-Mean_transmission,sum),x=Transmitted*100)+xlab("Transmission rate to seedling (%)")+ylab("Strains")+scale_y_discrete(limits=Mean_strain_transmission_seedling_exp3$Strain_Figure_name)+scale_color_manual(values=SynCom_color,breaks=c("3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"))+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+
+legend_fig5A <- get_legend(plot_strain_transmission_seedling_exp3)
+legend_fig5A=ggarrange(legend_fig5A)
+fig5A=plot_strain_transmission_seedling_exp3+theme(legend.position = "none") 
+
+```
+
+###Panel B: log10(%Seedling/%seed)
+
+```{r}
+PS_run2_rich_noNG=subset_samples(PS_run2_rich,Plant_type!="NG")
+PS_run2_rich_no0=transform_sample_counts(PS_run2_rich_noNG, function(x) x+1 ) #add 1 read for the log transformation
+PS_run2_rich_no0relative=transform_sample_counts(PS_run2_rich_no0, function(x) x/sum(x)*100)
+
+
+data_fitness=as.data.frame(otu_table(PS_run2_rich_no0relative))
+data_fitness2 <- tibble::rownames_to_column(data_fitness, "Sample_ID")
+
+data_fitness3=pivot_longer(data_fitness2,cols=colnames(data_fitness),names_to = "gyrB")
+
+colnames(data_fitness3)=c("Sample_ID","gyrB","Relative_abundance")
+data_fitness3=as.data.frame(data_fitness3)
+
+data_fitness4=left_join(data_fitness3, strains_33,by="gyrB")
+
+data_fitness4$Strain_Figure_name = data_fitness4$Strain_Figure_name %>% replace_na('Native strain')
+
+sample_data_fitness=as.data.frame(sample_data(PS_run2_rich_noNG))
+sample_data_fitness$Sample_ID=row.names(sample_data_fitness)
+data_fitness5=left_join(data_fitness4,sample_data_fitness,by="Sample_ID")
+
+##### get the mean of relative abundance for each strain in seedling
+data_fitness5_seedling=data_fitness5[data_fitness5$Type.y=="Seedling",]
+names(data_fitness5_seedling)[names(data_fitness5_seedling) == "Relative_abundance"] <- "Relative_abundance_seedling"
+data_fitness5_seedling_stat=summarySE(data_fitness5_seedling,measurevar=c("Relative_abundance_seedling"), groupvars=c("gyrB","SynCom","Strain_Figure_name","Richness"), na.rm = TRUE)
+
+##### get the mean of relative abundance for each strain in seed
+data_fitness5_seed=data_fitness5[data_fitness5$Type.y=="Seed",]
+names(data_fitness5_seed)[names(data_fitness5_seed) == "Relative_abundance"] <- "Relative_abundance_seed"
+data_fitness5_seed_stat=summarySE(data_fitness5_seed,measurevar=c("Relative_abundance_seed"), groupvars=c("gyrB","SynCom","Strain_Figure_name","Richness"), na.rm = TRUE)
+
+#concatenate seedling and seed data
+ALL_data_seed_seedlings_rich=full_join(data_fitness5_seedling_stat,data_fitness5_seed_stat,by=c("gyrB","SynCom"))
+
+ALL_data_seed_seedlings_rich_nonative=ALL_data_seed_seedlings_rich[ALL_data_seed_seedlings_rich$Strain_Figure_name.x!="Native strain",]
+
+ALL_data_seed_seedlings_rich_nonative$fitness=ALL_data_seed_seedlings_rich_nonative$Relative_abundance_seedling/ALL_data_seed_seedlings_rich_nonative$Relative_abundance_seed
+
+names(ALL_data_seed_seedlings_rich_nonative)[names(ALL_data_seed_seedlings_rich_nonative) == "Strain_Figure_name.x"] <- "Strain_Figure_name"
+ALL_data_seed_seedlings_rich_nonative_meta=merge(strains_33,ALL_data_seed_seedlings_rich_nonative,by="Strain_Figure_name",all.x = T)
+
+#3A
+ALL_data_seed_seedlings_rich_nonative_meta_3A=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="3A"&ALL_data_seed_seedlings_rich_nonative_meta$CS3A=="Yes",]
+
+#3B
+ALL_data_seed_seedlings_rich_nonative_meta_3B=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="3B"&ALL_data_seed_seedlings_rich_nonative_meta$CS3B=="Yes",]
+
+#3C
+ALL_data_seed_seedlings_rich_nonative_meta_3C=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="3C"&ALL_data_seed_seedlings_rich_nonative_meta$CS3C=="Yes",]
+
+#5A
+ALL_data_seed_seedlings_rich_nonative_meta_5A=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="5A"&ALL_data_seed_seedlings_rich_nonative_meta$CS5A=="Yes",]
+
+#5B
+ALL_data_seed_seedlings_rich_nonative_meta_5B=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="5B"&ALL_data_seed_seedlings_rich_nonative_meta$CS5B=="Yes",]
+
+#5C
+ALL_data_seed_seedlings_rich_nonative_meta_5C=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="5C"&ALL_data_seed_seedlings_rich_nonative_meta$CS5C=="Yes",]
+
+#8A
+ALL_data_seed_seedlings_rich_nonative_meta_8A=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="8A"&ALL_data_seed_seedlings_rich_nonative_meta$CS8A=="Yes",]
+
+#8B
+ALL_data_seed_seedlings_rich_nonative_meta_8B=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="8B"&ALL_data_seed_seedlings_rich_nonative_meta$CS8B=="Yes",]
+
+#8C
+ALL_data_seed_seedlings_rich_nonative_meta_8C=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="8C"&ALL_data_seed_seedlings_rich_nonative_meta$CS8C=="Yes",]
+
+#11A
+ALL_data_seed_seedlings_rich_nonative_meta_11A=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="11A"&ALL_data_seed_seedlings_rich_nonative_meta$CS11A=="Yes",]
+
+#11B
+ALL_data_seed_seedlings_rich_nonative_meta_11B=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="11B"&ALL_data_seed_seedlings_rich_nonative_meta$CS11B=="Yes",]
+
+#11C
+ALL_data_seed_seedlings_rich_nonative_meta_11C=ALL_data_seed_seedlings_rich_nonative_meta[ALL_data_seed_seedlings_rich_nonative_meta$SynCom=="11C"&ALL_data_seed_seedlings_rich_nonative_meta$CS11C=="Yes",]
+
+
+ALL_data_fit=rbind(ALL_data_seed_seedlings_rich_nonative_meta_3A,ALL_data_seed_seedlings_rich_nonative_meta_3B,ALL_data_seed_seedlings_rich_nonative_meta_3C,ALL_data_seed_seedlings_rich_nonative_meta_5A,ALL_data_seed_seedlings_rich_nonative_meta_5B,ALL_data_seed_seedlings_rich_nonative_meta_5C,ALL_data_seed_seedlings_rich_nonative_meta_8A,ALL_data_seed_seedlings_rich_nonative_meta_8B,ALL_data_seed_seedlings_rich_nonative_meta_8C,ALL_data_seed_seedlings_rich_nonative_meta_11A,ALL_data_seed_seedlings_rich_nonative_meta_11B,ALL_data_seed_seedlings_rich_nonative_meta_11C)
+
+
+ALL_data_fit_noNA=ALL_data_fit[complete.cases(ALL_data_fit), ] 
+
+#to reorder strains based on mean
+Mean_strain=summarySE(ALL_data_fit_noNA, measurevar=c("fitness"),groupvars=c("Strain_Figure_name"), na.rm = TRUE)
+Mean_strain$Mean_fit=Mean_strain$fitness
+Mean_strain$fitness=NULL
+
+ALL_data_fit_noNA2=left_join(ALL_data_fit_noNA,Mean_strain,by="Strain_Figure_name")
+
+fig5B=ggplot(ALL_data_fit_noNA2,aes(x=log10(fitness),y=Strain_Figure_name,color=SynCom))+geom_point(size=5)+scale_color_manual(values=SynCom_color)+theme_classic()+theme(text = element_text(size = 20))+guides(fill=guide_legend(ncol=1))+ylab("Strains")+geom_vline(xintercept = 0)+aes(y=reorder(Strain_Figure_name,Mean_fit,sum),x=log10(fitness))+ylab("Strains")+xlab("log10(%Seedling/%seed)")+guides(color="none")+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+
+```
+
+###Panel C: correlation log10(%Seedling) ~ log10(%seed)
+```{r}
+
+seed_seedling_correlation=ggplot(ALL_data_fit_noNA2,aes(x=log10(Relative_abundance_seed),y=log10(Relative_abundance_seedling)))+geom_point(aes(color=Family_ASV1),size=5)+theme_classic()+theme(text = element_text(size = 20),axis.text = element_text(face = "bold"))+xlab("log10(Relative abundance of ASV in seeds (%))")+ylab("log10(Relative abundance of ASV in seedlings (%))")+geom_smooth(method="lm")+scale_color_manual(values=family_colors)+labs(color='Family')+guides(color="none")+geom_abline(slope=1, intercept=0,linetype="dashed", color="black") +guides(color=guide_legend(ncol=1))+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+legend_fig5C <- get_legend(seed_seedling_correlation)
+legend_fig5C=ggarrange(legend_fig5C)
+fig5C=seed_seedling_correlation+theme(legend.position = "none") 
+
+
+
+model=lm(log10(ALL_data_fit_noNA2$Relative_abundance_seed)~log10(ALL_data_fit_noNA2$Relative_abundance_seedling))
+anova(model)
+summary(model)
+
+#log10(%Seedling) = -0.07949+0.85557 x log10(%Seed) (R2 = 73,36%, p-value < 0.001)
+
+```
+###Panel D: phylosignal analysis
+
+```{r}
+ALL_data_fit_noNA2
+#get tree from the plotALL_data_fit_noNA
+
+list_strains_phylo_signal=unique(ALL_data_fit_noNA2$gyrB.x) #32 strains (1 strain not detected (Pedobacter))
+
+phyloseq_strains_phylo_signal= prune_taxa(list_strains_phylo_signal, PS_run2_rich)
+  
+#tre_test=phy_tree(phyloseq_strains_phylo_signal, errorIfNULL=TRUE)
+#install.packages("phytools")
+library("phytools")
+
+tree_genome_phylo_analysis=read.newick(file = "~/Documents/Thèse/Article 1/Data/Re__Souches_arbre/GAAutomlst_trimmed2.newick")# remove the strains that are not in experiment 3 ("8991", "8995", "8993") and the not detected strain (9032) --> 32 strains
+
+#change tip labels from CFBP number to species name (CFBP)
+strains_phylo_signal=strains_33[strains_33$gyrB %in% list_strains_phylo_signal,]
+labels <- strains_phylo_signal[, c("CFBP", "Strain_Figure_name")]
+
+# Créer un vecteur de correspondance entre les noms de séquence et les nouveaux labels
+corresp_labels <- setNames(labels$Strain_Figure_name, labels$CFBP)
+
+# Changer les labels des nœuds terminaux de l'arbre phylogénétique
+library(ape)
+
+tree_genome_phylo_analysis$tip.label <- corresp_labels[tree_genome_phylo_analysis$tip.label]
+tree_genome_phylo_analysis_rooted <- root(tree_genome_phylo_analysis, outgroup = "Bacillus megaterium (9010)")
+
+
+ALL_data_fit_noNA2$log10_Relative_abundance_seedling=log10(ALL_data_fit_noNA2$Relative_abundance_seedling)
+
+ALL_data_fit_noNA2$log10_Relative_abundance_seed=log10(ALL_data_fit_noNA2$Relative_abundance_seed)
+
+
+
+library(Rmisc)
+
+mean_strain_seedling_log=summarySE(ALL_data_fit_noNA2, measurevar=c("log10_Relative_abundance_seedling"), groupvars=c("Strain_Figure_name"), na.rm = TRUE)
+mean_strain_seed_log=summarySE(ALL_data_fit_noNA2, measurevar=c("log10_Relative_abundance_seed"), groupvars=c("Strain_Figure_name"), na.rm = TRUE)
+
+library(dplyr)
+
+mean_strain_seedling=summarySE(ALL_data_fit_noNA2, measurevar=c("Relative_abundance_seedling"), groupvars=c("Strain_Figure_name"), na.rm = TRUE)
+mean_strain_seed=summarySE(ALL_data_fit_noNA2, measurevar=c("Relative_abundance_seed"), groupvars=c("Strain_Figure_name"), na.rm = TRUE)
+
+
+mean_strain_all_log=left_join(mean_strain_seedling_log,mean_strain_seed_log,by="Strain_Figure_name")
+mean_strain_all=left_join(mean_strain_seedling,mean_strain_seed,by="Strain_Figure_name")
+
+mean_strain_all$log10_seedling_seed_ratio=log10(mean_strain_all$Relative_abundance_seedling/mean_strain_all$Relative_abundance_seed)
+
+mean_strain_all=left_join(mean_strain_all,mean_strain_all_log,by="Strain_Figure_name")
+
+
+
+strains_phylo_signal=strains_33[strains_33$gyrB %in% list_strains_phylo_signal,]
+
+dat=mean_strain_all
+rownames(dat)=mean_strain_all$Strain_Figure_name
+dat <- dat[, c("log10_Relative_abundance_seed","log10_Relative_abundance_seedling","log10_seedling_seed_ratio")]
+
+library("phylosignal")
+p4dbis <- phylo4d(tree_genome_phylo_analysis_rooted, dat)
+carni.lipa <- lipaMoran(p4dbis)
+carni.lipa.p4dbis <- lipaMoran(p4dbis, as.p4d = TRUE)
+fig5D=barplot(p4dbis, bar.col=(carni.lipa$p.value < 0.05) + 1, center = FALSE , scale = FALSE,tip.cex = 1)
+
+
+```
+
+
+#Figure 6
+
+###Panel A: sources-sink analysis using FEAST
+
+```{r}
+
+#subset for feast analysis
+
+potting_soil_source=subset_samples(PS_run2_rich,Type=="Soil")
+potting_soil_source <- merge_samples(potting_soil_source, "Type") #mean of soil source at Day0 and Day7
+sample_names(potting_soil_source)[sample_names(potting_soil_source) == "Soil"] <- "Potting_soil"
+
+control_seed_source=subset_samples(PS_run2_rich,Type=="Seed"&SynCom==0)
+control_seed_source <- merge_samples(control_seed_source, "Type",fun = mean) #mean of control seed
+sample_names(control_seed_source)[sample_names(control_seed_source) == "Seed"] <- "Control_seed"
+
+#3A
+inoculated_seed_3A=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="3A")
+inoculated_seed_3A=merge_samples(inoculated_seed_3A, "Type")
+sample_names(inoculated_seed_3A)[sample_names(inoculated_seed_3A) == "Seed"] <- "Inoculated_seed_3A"
+
+inocula3A=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="3A")
+sink_seedling3A=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="3A"&Plant_type!="NG")
+
+#3B
+inoculated_seed_3B=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="3B")
+inoculated_seed_3B=merge_samples(inoculated_seed_3B, "Type")
+sample_names(inoculated_seed_3B)[sample_names(inoculated_seed_3B) == "Seed"] <- "Inoculated_seed_3B"
+
+inocula3B=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="3B")
+sink_seedling3B=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="3B"&Plant_type!="NG")
+
+
+#3C
+inoculated_seed_3C=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="3C")
+inoculated_seed_3C=merge_samples(inoculated_seed_3C, "Type")
+sample_names(inoculated_seed_3C)[sample_names(inoculated_seed_3C) == "Seed"] <- "Inoculated_seed_3C"
+
+
+inocula3C=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="3C")
+sink_seedling3C=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="3C"&Plant_type!="NG") #7
+
+#5A
+inoculated_seed_5A=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="5A")
+inoculated_seed_5A=merge_samples(inoculated_seed_5A, "Type")
+sample_names(inoculated_seed_5A)[sample_names(inoculated_seed_5A) == "Seed"] <- "Inoculated_seed_5A"
+
+
+inocula5A=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="5A")
+sink_seedling5A=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="5A"&Plant_type!="NG")
+
+#5B
+inoculated_seed_5B=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="5B")
+inoculated_seed_5B=merge_samples(inoculated_seed_5B, "Type")
+sample_names(inoculated_seed_5B)[sample_names(inoculated_seed_5B) == "Seed"] <- "Inoculated_seed_5B"
+
+
+inocula5B=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="5B")
+sink_seedling5B=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="5B"&Plant_type!="NG")#7
+
+#5C
+inoculated_seed_5C=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="5C")
+inoculated_seed_5C=merge_samples(inoculated_seed_5C, "Type")
+sample_names(inoculated_seed_5C)[sample_names(inoculated_seed_5C) == "Seed"] <- "Inoculated_seed_5C"
+
+inocula5C=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="5C")
+sink_seedling5C=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="5C"&Plant_type!="NG")#7
+
+#8A
+inoculated_seed_8A=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="8A")
+inoculated_seed_8A=merge_samples(inoculated_seed_8A, "Type")
+sample_names(inoculated_seed_8A)[sample_names(inoculated_seed_8A) == "Seed"] <- "Inoculated_seed_8A"
+
+
+inocula8A=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="8A")
+sink_seedling8A=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="8A"&Plant_type!="NG")
+
+#8B
+inoculated_seed_8B=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="8B")
+inoculated_seed_8B=merge_samples(inoculated_seed_8B, "Type")
+sample_names(inoculated_seed_8B)[sample_names(inoculated_seed_8B) == "Seed"] <- "Inoculated_seed_8B"
+
+
+inocula8B=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="8B")
+sink_seedling8B=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="8B"&Plant_type!="NG")
+
+#8C
+inoculated_seed_8C=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="8C")
+inoculated_seed_8C=merge_samples(inoculated_seed_8C, "Type")
+sample_names(inoculated_seed_8C)[sample_names(inoculated_seed_8C) == "Seed"] <- "Inoculated_seed_8C"
+
+
+inocula8C=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="8C")
+sink_seedling8C=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="8C"&Plant_type!="NG")
+
+
+#11A
+inoculated_seed_11A=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="11A")
+inoculated_seed_11A=merge_samples(inoculated_seed_11A, "Type")
+sample_names(inoculated_seed_11A)[sample_names(inoculated_seed_11A) == "Seed"] <- "Inoculated_seed_11A"
+
+
+inocula11A=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="11A")
+sink_seedling11A=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="11A"&Plant_type!="NG")
+
+#11B
+inoculated_seed_11B=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="11B")
+inoculated_seed_11B=merge_samples(inoculated_seed_11B, "Type")
+sample_names(inoculated_seed_11B)[sample_names(inoculated_seed_11B) == "Seed"] <- "Inoculated_seed_11B"
+
+
+inocula11B=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="11B")
+sink_seedling11B=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="11B"&Plant_type!="NG")
+
+#11C
+inoculated_seed_11C=subset_samples(PS_run2_rich,Type=="Seed"&SynCom=="11C")
+inoculated_seed_11C=merge_samples(inoculated_seed_11C, "Type")
+sample_names(inoculated_seed_11C)[sample_names(inoculated_seed_11C) == "Seed"] <- "Inoculated_seed_11C"
+
+
+inocula11C=subset_samples(PS_run2_rich,Type=="Inoculum"&SynCom=="11C")
+sink_seedling11C=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="11C"&Plant_type!="NG")
+
+
+#control
+sink_seedlingcontrol=subset_samples(PS_run2_rich,Type=="Seedling"&SynCom=="0"&Plant_type!="NG")
+
+
+#library("readr")
+
+feast_controlseedling=merge_phyloseq(potting_soil_source,control_seed_source,sink_seedlingcontrol)
+write_rds(feast_controlseedling,"Documents/Thèse/Article 1/analyses/FEAST/feast_control_seedling.rds")
+
+feast_3A_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_3A,sink_seedling3A)
+write_rds(feast_3A_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_3A_inoculatedseed.rds")
+feast_3A_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula3A,sink_seedling3A)
+
+feast_3B_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_3B,sink_seedling3B)
+write_rds(feast_3B_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_3B_inoculatedseed.rds")
+feast_3B_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula3B,sink_seedling3B)
+
+
+feast_3C_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_3C,sink_seedling3C)
+write_rds(feast_3C_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_3C_inoculatedseed.rds")
+feast_3C_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula3C,sink_seedling3C)
+
+feast_5A_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_5A,sink_seedling5A)
+write_rds(feast_5A_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_5A_inoculatedseed.rds")
+feast_5A_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula5A,sink_seedling5A)
+
+feast_5B_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_5B,sink_seedling5B)
+write_rds(feast_5B_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_5B_inoculatedseed.rds")
+feast_5B_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula5B,sink_seedling5B)
+
+
+feast_5C_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_5C,sink_seedling5C)
+write_rds(feast_5C_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_5C_inoculatedseed.rds")
+feast_5C_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula5C,sink_seedling5C)
+
+feast_8A_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_8A,sink_seedling8A)
+write_rds(feast_8A_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_8A_inoculatedseed.rds")
+feast_8A_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula8A,sink_seedling8A)
+
+feast_8B_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_8B,sink_seedling8B)
+write_rds(feast_8B_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_8B_inoculatedseed.rds")
+feast_8B_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula8B,sink_seedling8B)
+
+
+feast_8C_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_8C,sink_seedling8C)
+write_rds(feast_8C_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_8C_inoculatedseed.rds")
+feast_8C_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula8C,sink_seedling8C)
+
+feast_11A_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_11A,sink_seedling11A)
+write_rds(feast_11A_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_11A_inoculatedseed.rds")
+feast_11A_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula11A,sink_seedling11A)
+
+feast_11B_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_11B,sink_seedling11B)
+write_rds(feast_11B_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_11B_inoculatedseed.rds")
+feast_11B_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula11B,sink_seedling11B)
+
+
+feast_11C_inoculatedseed=merge_phyloseq(potting_soil_source,control_seed_source,inoculated_seed_11C,sink_seedling11C)
+write_rds(feast_11C_inoculatedseed,"Documents/Thèse/Article 1/analyses/FEAST/feast_11C_inoculatedseed.rds")
+feast_11C_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula11C,sink_seedling11C)
+
+
+```
+
+Ici mettre script Marie
+
+####Import FEAST results for plotting
+```{r}
+FEAST_result <- read.table("FEAST_results_allSynComs_source_contributions_matrix.txt", header=TRUE, check.names = FALSE, sep = "\t")
+
+#transform to long format
+library(reshape2)
+FEAST_result_long=setNames(melt(FEAST_result), c("Sink", "SynCom", 'Source_Habitat', 'Percent_Contrib'))
+dim(FEAST_result_long)
+head(FEAST_result_long)
+
+```
+
+
+```{r}
+#figure of percent contribution of each source by seedling 
+library(ggplot2)
+
+FEAST_result_long$SynCom<-ordered(FEAST_result_long$SynCom, levels=c("3A", "3B", "3C", "5A", "5B", "5C", "8A", "8B", "8C", "11A", "11B", "11C", "Control"))
+
+color_sources <-  c("Soil"='#bc6c25','Native_Seed'='#219ebc' , "Inoculated_Seed"="#ffb703", "Unknown"="black")
+
+#mean by condition
+
+FEAST_result_long
+stat_feast=summarySE(FEAST_result_long, measurevar=c("Percent_Contrib"),groupvars=c("SynCom","Source_Habitat"), na.rm = TRUE)
+stat_feast$SynCom<-ordered(stat_feast$SynCom, levels=c( "Control","3A", "3B", "3C", "5A", "5B", "5C", "8A", "8B", "8C", "11A", "11B", "11C"))
+
+fig6A=ggplot(data=stat_feast, aes(x=SynCom, y=Percent_Contrib*100, fill=Source_Habitat)) + geom_bar(aes(), stat="identity", position="stack") + theme_classic()+xlab("Seedlings")+ylab("Source contribution (%)")+ guides(fill=guide_legend(title="Source habitat"))+ theme(legend.text = element_text(color="black", size=18, face="bold"))+ theme(legend.title = element_text(color="black", size=20, face="bold"))	+ theme(axis.title = element_text(color="black", size=20, face="bold"))+ theme(axis.text = element_text(color="black", size=15, face="bold"))+ theme(axis.text.x = element_text(angle = 45,vjust=0.65))+scale_fill_manual(values = color_sources,labels=c("Native_Seed"="Native seed", "Inoculated_Seed"="Inoculated seed")) 
+
+#get mean, min and max for each condition 
+stat_feast_soil=stat_feast[stat_feast$Source_Habitat=="Soil",]
+mean_stat_feast_soil=mean(stat_feast_soil$Percent_Contrib) #0.04916492 -->4.9%
+min_stat_feast_soil=min(stat_feast_soil$Percent_Contrib) #0.00950489 -->0.9% for SynCom 8A
+max_stat_feast_soil=max(stat_feast_soil$Percent_Contrib) #0.1287025 -->12.8% for SynCom 5C
+
+## see figS4 for detailed and statistic on the FEAST analysis
+
+```
+
+###Panel B: SynCom effect on community recruitment
+
+
+```{r}
+## seedlings without SynComs ASVs
+
+pop_taxa = function(physeq, badTaxa){
+  allTaxa = taxa_names(physeq)
+  allTaxa <- allTaxa[!(allTaxa %in% badTaxa)]
+  return(prune_taxa(myTaxa, physeq))
+}
+
+dist= "bray"
+PS_exp3_rich_seedling_emerged=subset_samples(PS_run2_rich_rar,Type=="Seedling"&Emergence==1) #1032 taxa and 97 samples 
+badTaxa = inoc_strains
+allTaxa = taxa_names(PS_exp3_rich_seedling_emerged)
+allTaxa <- allTaxa[!(allTaxa %in% badTaxa)] # 
+PS_exp3_rich_seedling_noSynComs = prune_taxa(allTaxa, PS_exp3_rich_seedling_emerged) #1001 taxa and 97 samples
+
+sample_data(PS_exp3_rich_seedling_noSynComs)$Richness=as.character(sample_data(PS_exp3_rich_seedling_noSynComs)$Richness)
+
+ord_exp3_seedlings_noSC<- ordinate(PS_exp3_rich_seedling_noSynComs, method = "PCoA", distance=dist)
+
+fig6B = plot_ordination(PS_exp3_rich_seedling_noSynComs, ord_exp3_seedlings_noSC, type="sites", color="SynCom")+theme_bw()+geom_point(size = 5)+theme_classic()+ theme(text = element_text(size = 20))+scale_color_manual(values = SynCom_color,breaks=c("0","3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"),labels=c("0"="Control","3A"="3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C"))+guides(color="none")+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))
+
+#STAT
+dist_PS_exp3_rich_seedling_noSynComs=phyloseq::distance(PS_exp3_rich_seedling_noSynComs,method="bray")
+adonis2(dist_PS_exp3_rich_seedling_noSynComs ~ sample_data(PS_exp3_rich_seedling_noSynComs)$SynCom) #R2 = 0.38765, p-value<0.001
+
+```
+
+
+
+#Figure 7
+###Panel A: SynCom and seedling effect on potting soil / rhizosphere communities
+
+```{r}
+PS_run1_conc_potting_soil=subset_samples(PS_run1_conc,Type=="Soil")
+PS_run1_conc_potting_soil <- prune_samples(sample_sums(PS_run1_conc_potting_soil) >= 500, PS_run1_conc_potting_soil)
+
+design_potting_soil <- read.csv("/Users/garnault-admin/Documents/Thèse/Data/Run2_CC68_Concentration/Design_potting_soil_exp2.csv", sep = ";",  check.names=FALSE, row.names=1)
+sample_data(PS_run1_conc_potting_soil)=design_potting_soil
+
+PS_run1_conc_potting_soil=subset_samples(PS_run1_conc_potting_soil,Time=="Day7")
+
+
+ord_PS_run1_conc_potting_soil<- ordinate(PS_run1_conc_potting_soil, method = "PCoA", distance=dist)
+
+
+color_potting_soil=c("0"="black","6"="#f19c79","No plant"="#696969")
+
+plot_ord_PS_run1_conc_potting_soil = plot_ordination(PS_run1_conc_potting_soil, ord_PS_run1_conc_potting_soil, type="sites", color="Concentration")+theme_bw()+geom_point(size = 5)+theme_classic()+ theme(text = element_text(size = 20),legend.text.align = 0)+scale_color_manual(values = color_potting_soil,breaks=c("0","6","No plant"),labels=c("0"="Control seedling","6"=expression(bold(paste("Inoculated seedling (","10"^"6","CFU/mL)")))))+labs(color='Potting soil with...')+scale_shape_manual(values=c(16,17),labels=c("Day0"="Day 0","Day7"="Day 7"))+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+theme(legend.text.align = 1)
+
+legend_fig7A <- get_legend(plot_ord_PS_run1_conc_potting_soil)
+legend_fig7A=ggarrange(legend_fig7A)
+fig7C=plot_ord_PS_run1_conc_potting_soil+theme(legend.position = "none") 
+
+
+dist_PS_run1_conc_potting_soil=phyloseq::distance(PS_run1_conc_potting_soil,method="bray")
+adonis2(dist_PS_run1_conc_potting_soil ~ sample_data(PS_run1_conc_potting_soil)$Plant*sample_data(PS_run1_conc_potting_soil)$Concentration)
+# seedling presence : R2 = 0.25516; p-value < 0.001
+# SynCom : R2 = 0.54843; p-value < 0.001
+
+
+
+```
+
+###Panel B: SynCom contribution to rhizosphere microbiota (exp2)
+
+```{r}
+#we use data_figure_conc made for the fig3A
+data_contribution_rhizo=data_figure_conc[data_figure_conc$Type.y=="Soil",]
+
+SynCom_contribution_rhizo=aggregate(data_contribution_rhizo$Relative_abundance, by=list(Category=data_contribution_rhizo$Sample_ID), FUN=sum)
+colnames(SynCom_contribution_rhizo)=c("Sample_ID","SynCom_contribution")
+
+PS_run1_conc_potting_soil=subset_samples(PS_run1_conc,Type=="Soil")
+sample_data_rhizo=as.data.frame(sample_data(PS_run1_conc_potting_soil))
+
+SynCom_contribution_rhizo=cbind(SynCom_contribution_rhizo,sample_data_rhizo,by="row.names",all.x=TRUE)
+
+stat_SynCom_contribution_rhizo=summarySE(SynCom_contribution_rhizo, measurevar=c("SynCom_contribution"),groupvars=c("Plant_type","Concentration"), na.rm = TRUE)
+
+stat_SynCom_contribution_rhizo_J7=stat_SynCom_contribution_rhizo[stat_SynCom_contribution_rhizo$Plant_type=="SoilJ7"&stat_SynCom_contribution_rhizo$Concentration!="No plant",]
+
+plot_stat_SynCom_contribution_rhizo <- ggplot(stat_SynCom_contribution_rhizo_J7, aes(x=Concentration, y=SynCom_contribution))+ 
+    geom_point(aes(size= 0.3),show.legend = F) +theme_classic()+scale_color_manual(values = SynCom_color)+
+  geom_errorbar(aes(ymin=SynCom_contribution-se, ymax=SynCom_contribution+se), width=.05, position=position_dodge(0.05))+scale_x_discrete(limits=c("0", "6"),labels=c("0"="Control seedling","6"="SynCom14 seedling"))+ylab("% of SynCom contribution")+theme(text = element_text(size = 20))+ylab("Cumulative Relative Abundance of \n SynCom  ASVs in rhizosphere (%)")+theme(text = element_text(size = 20))+ scale_y_continuous(limits = c(0, 0.5), breaks = seq(0, 0.5, by = 0.1))+theme(legend.position="none")+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+xlab("")+geom_segment(x = 1, xend = 2, y = 0.3, yend = 0.3, color = "black")+annotate("text", x=1.5, label = expression(bold("NS")), y =  0.32, size=5)
+
+SynCom_contribution_rhizo_J7_plant=SynCom_contribution_rhizo[SynCom_contribution_rhizo$Plant_type!="SoilJ0"&SynCom_contribution_rhizo$Concentration!="No plant",]
+
+pairwise.wilcox.test(SynCom_contribution_rhizo_J7_plant$SynCom_contribution,g = SynCom_contribution_rhizo_J7_plant$Concentration,paired = F) #--> Not significant
+
+```
+
+###Panel C: Differential abundance in rhizospheres from control and inoculated seedlings
+
+
+```{r}
+#devtools::install_github("david-barnett/microViz@0.10.10") ; 
+library(microViz)
+#install.packages("corncob") ; 
+library(corncob)
+PS_run1_conc_potting_soil_J7_rhizo=subset_samples(PS_run1_conc,Type=="Soil"&Concentration!="No plant")
+PS_run1_conc_potting_soil_J7_rhizo #2030 taxa and 7 samples
+PS_run1_conc_potting_soil_J7_rhizo <- filter_taxa(PS_run1_conc_potting_soil_J7_rhizo, function(x) sum(x) > 0, TRUE) #1322 taxa and 7 samples
+
+PS_run1_conc_potting_soil_J7_rhizo <- PS_run1_conc_potting_soil_J7_rhizo %>%
+  ps_mutate(
+    Control = ifelse(Concentration == "0", yes = 1, no = 0),
+    SynCom14 = ifelse(Concentration == "6", yes = 1, no = 0),
+  )
+
+lm_models <- PS_run1_conc_potting_soil_J7_rhizo %>%
+  tax_fix(min_length = 4, unknowns = c("unclassified", "unclassified Family", "unclassified_unclassified"), sep = " ", anon_unique = TRUE, suffix_rank = "classified") %>%
+  tax_prepend_ranks() %>%
+  # it makes sense to perform the compositional transformation BEFORE filtering
+  tax_transform("compositional", rank = "Genus", keep_counts = TRUE) %>%
+  tax_filter(min_prevalence = 0.2, undetected = 0, use_counts = TRUE) %>%
+  taxatree_models(
+    type = lm,
+    trans = "log2", trans_args = list(zero_replace = "halfmin"),
+    ranks = NULL, # uses every rank available except the first
+    variables = c("SynCom14")
+  )
+
+lm_stats <- taxatree_models2stats(lm_models)
+
+lm_stats <- taxatree_stats_p_adjust(
+  data = lm_stats, method = "BH", grouping = "rank"
+)
+# notice the new variable
+lm_stats %>% taxatree_stats_get()
+
+fig7C=lm_stats %>%
+  taxatree_label(
+    rank == "Genus"& p.adj.BH.rank < 0.05&abs(estimate)>(0.01), p.adj.BH.rank < 0.05 | prevalence > 0.5
+  ) %>%
+  taxatree_plots(sig_stat = "p.adj.BH.rank", sig_threshold = 0.05) %>%
+  .[[1]] %>% # show only the first plot
+  taxatree_plot_labels(
+    taxon_renamer = function(x) stringr::str_remove(x, "G: "),
+    fun = ggrepel::geom_label_repel, x_nudge = 0.7, hjust = 0.5, size = 2
+  )
+
+```
+
+
+#Supplementary figures
+
+
+###FigS1: strain selection inside collection
+
+```{r}
+
+strain_collection_selection=read.csv(file = "Documents/Thèse/Article 1/Data/Collection_selection.csv",h=T,sep=";")
+strain_collection_selection$rel_abund=as.numeric(strain_collection_selection$rel_abund)
+strain_collection_selection$prevalence=as.numeric(strain_collection_selection$prevalence)
+
+selection_color=c("No"="lightgrey","Yes"="#2a9d8f")
+
+
+tax_colors_all=c(tax_colors,tax_colors_14,"Other strain"="black")
+
+tax_colors
+unique(strain_collection_selection$Strain_figure_name)
+strain_collection_selection= subset(strain_collection_selection, !is.na(rel_abund)) #remove undetected ASVs
+
+test_panto=strain_collection_selection[strain_collection_selection$Strain_figure_name=="Pantoea agglomerans (8988)",]
+
+test_panto=strain_collection_selection[strain_collection_selection$Strain_figure_name=="Pantoea agglomerans (8988)",]
+
+library(scales)
+figureS1=ggplot(data=strain_collection_selection, aes(x=rel_abund, y=prevalence/100)) +
+    geom_point(aes(color=Strain_figure_name,size=Selection.40.souches,shape=Core.haricot))+ xlab("Mean Taxa (ASV) Relative Abundance") + ylab("Taxa (ASV) Prevalence")+ theme_classic()+theme(text = element_text(size = 20)) +ggtitle("")+scale_size_manual(values=c(2,6))+labs(size="Strain selected",shape="Core taxa within the collection",color='Strain') +scale_color_manual(values=tax_colors_all) +scale_x_log10(labels = scales::percent_format(scale = 1, accuracy = 0.001))+scale_shape_manual(labels=c("No","Yes"),values=c(16, 17))+ guides(fill = guide_legend(ncol = 1))+  scale_y_continuous(labels = percent_format())+guides(colour = guide_legend(override.aes = list(size=6),ncol=1,order=3),shape = guide_legend(override.aes = list(size=6),order=2),size=guide_legend(order=1))+theme(legend.text = element_text(size = 20)) +guides(colour = "none",shape="none",size="none") + theme(text = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+theme(text = element_text(size = 20))+ theme(text = element_text(color="black", face="bold"))
+    
+```
+
+###FigS2: rarefaction curves, see rarefaction section
+
+###FigS3: Correlation between relative abundance of SynCom ASVs on seedling and SynCom richness (exp3)
+
+```{r}
+
+SynCom_contribution3_noNG_nocontrol=SynCom_contribution3_noNG[SynCom_contribution3_noNG$SynCom!="0",]
+
+plot_corr_contribution_richness=ggplot(SynCom_contribution3_noNG_nocontrol,aes(x=Richness,y=SynCom_contribution))+geom_point(size=4)+theme_classic()+geom_smooth(method=lm)+ylab("Cumulative Relative Abundance of \n SynCom  ASVs in seedlings (%)")+xlab("SynCom richness")+theme(text = element_text(size = 20))+ theme(text = element_text(color="black", face="bold"))+theme(axis.title = element_text(color="black", face="bold"))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+scale_x_continuous(breaks =c(3,5,8,11))
+
+
+model=lm(SynCom_contribution3_noNG_nocontrol$SynCom_contribution~SynCom_contribution3_noNG_nocontrol$Richness)
+anova(model)
+summary(model)
+cor(SynCom_contribution3_noNG_nocontrol$Richness, SynCom_contribution3_noNG_nocontrol$SynCom_contribution, method = c("pearson"))
+
+
+```
+###FigS4
+
+####Stat 
+```{r}
+#average contribution of sources for each SynCom
+library(ggplot2)
+
+FEAST_result_long$SynCom<-ordered(FEAST_result_long$SynCom, levels=c("3A", "3B", "3C", "5A", "5B", "5C", "8A", "8B", "8C", "11A", "11B", "11C", "Control"))
+
+SynCom_color=c('Control'="black",'3A'="#74c69d",'3B'="#52b788",'3C'="#40916c",'5A'="#61a5c2",'5B'="#468faf",'5C'="#2c7da0",'8A'="#a68a64",'8B'="#936639",'8C'="#7f4f24",'11A'="#bc3908",'11B'="#941b0c",'11C'="#621708")
+
+
+#stat for each source category
+
+#potting soil
+FEAST_result_long_Soil=FEAST_result_long[FEAST_result_long$Source_Habitat=="Soil",]
+
+pp<-pairwise.wilcox.test(FEAST_result_long_Soil$Percent_Contrib,g = FEAST_result_long_Soil$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters) #--> all none significant
+
+#unkknown
+FEAST_result_long_unknown=FEAST_result_long[FEAST_result_long$Source_Habitat=="Unknown",]
+
+pp<-pairwise.wilcox.test(FEAST_result_long_unknown$Percent_Contrib,g = FEAST_result_long_unknown$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+
+
+#native seed
+
+FEAST_result_long_native_seed=FEAST_result_long[FEAST_result_long$Source_Habitat=="Native_Seed",]
+
+pp<-pairwise.wilcox.test(FEAST_result_long_native_seed$Percent_Contrib,g = FEAST_result_long_native_seed$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+library(multcompView)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+
+#inoculated seed
+
+FEAST_result_long_Inoculated_Seed=FEAST_result_long[FEAST_result_long$Source_Habitat=="Inoculated_Seed"&FEAST_result_long$SynCom!="Control",]
+
+pp<-pairwise.wilcox.test(FEAST_result_long_Inoculated_Seed$Percent_Contrib,g = FEAST_result_long_Inoculated_Seed$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+library(multcompView)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+
+```
+####Plot FigS4
+```{r}
+SynCom_color=c('Control'="black",'3A'="#74c69d",'3B'="#52b788",'3C'="#40916c",'5A'="#61a5c2",'5B'="#468faf",'5C'="#2c7da0",'8A'="#a68a64",'8B'="#936639",'8C'="#7f4f24",'11A'="#bc3908",'11B'="#941b0c",'11C'="#621708")
+
+##Soil
+
+FEAST_result_long_potting_soil=FEAST_result_long[FEAST_result_long$Source_Habitat=="Soil",]
+
+plot_potting_soil_contribution=ggplot(data=FEAST_result_long_potting_soil, aes(x=SynCom, y=Percent_Contrib, fill= SynCom)) + geom_boxplot(alpha=0.8) +geom_point(aes(x=SynCom, y=Percent_Contrib, color=SynCom, fill=SynCom), 
+             position=position_jitterdodge(jitter.width=0.5, dodge.width=0.7), 
+             size=4, alpha=1)+ theme_classic()+xlab("SynCom")+ylab("Source contribution (%)")+ theme(legend.text = element_text(color="black", size=15, face="bold"))+ theme(legend.title = element_text(color="black", size=15, face="bold"))	+ theme(axis.title = element_text(color="black", size=15, face="bold"))+ theme(axis.text = element_text(color="black", size=15, face="bold"))+scale_fill_manual(values = SynCom_color)+ scale_y_continuous(labels = scales::percent) +facet_wrap(~Source_Habitat,scale='free',labeller = labeller(Source_Habitat = label_source),)+scale_color_manual(values = SynCom_color)+guides(fill='none',color="none")+theme( axis.text.x = element_text(angle = 45,vjust=0.65),strip.text.x = element_text( size = 15, color = "black", face = "bold"))+geom_segment(x = 1, xend = 13, y = 0.37, yend = 0.37, color = "black")+annotate("text", x=7, label = expression(bold("NS")), y =  0.4, size=5)
+#+annotate("text", x=1, label = expression(bold("a")), y =  1, size=5,data = FEAST_result_long[FEAST_result_long$Source_Habitat == "Unknown",])
+
+
+## Native seed
+
+FEAST_result_long_Native_Seed=FEAST_result_long[FEAST_result_long$Source_Habitat=="Native_Seed",]
+
+plot_Native_Seed_contribution=ggplot(data=FEAST_result_long_Native_Seed, aes(x=SynCom, y=Percent_Contrib, fill= SynCom)) + geom_boxplot(alpha=0.8) +geom_point(aes(x=SynCom, y=Percent_Contrib, color=SynCom, fill=SynCom), 
+             position=position_jitterdodge(jitter.width=0.5, dodge.width=0.7), 
+             size=4, alpha=1)+ theme_classic()+xlab("SynCom")+ylab("Source contribution (%)")+ theme(legend.text = element_text(color="black", size=15, face="bold"))+ theme(legend.title = element_text(color="black", size=15, face="bold"))	+ theme(axis.title = element_text(color="black", size=15, face="bold"))+ theme(axis.text = element_text(color="black", size=15, face="bold"))+scale_fill_manual(values = SynCom_color)+ scale_y_continuous(labels = scales::percent) +facet_wrap(~Source_Habitat,scale='free',labeller = labeller(Source_Habitat = label_source),)+scale_color_manual(values = SynCom_color)+guides(fill='none',color="none")+theme( axis.text.x = element_text(angle = 45,vjust=0.65),strip.text.x = element_text( size = 15, color = "black", face = "bold"))+annotate("text", x=1, label = expression(bold("a")), y =  0.18, size=5)+annotate("text", x=2, label = expression(bold("b")), y =  0.9, size=5)+annotate("text", x=3, label = expression(bold("cd")), y =  0.15, size=5)+annotate("text", x=4, label = expression(bold("ac")), y =  0.25, size=5)+annotate("text", x=5, label = expression(bold("c")), y =  0.12, size=5)+annotate("text", x=6, label = expression(bold("a")), y =  0.18, size=5)+annotate("text", x=7, label = expression(bold("be")), y =  0.75, size=5)+annotate("text", x=8, label = expression(bold("ae")), y =  0.32, size=5)+annotate("text", x=9, label = expression(bold("acd")), y =  0.18, size=5)+annotate("text", x=10, label = expression(bold("d")), y =  0.12, size=5)+annotate("text", x=11, label = expression(bold("acd")), y =  0.35, size=5)+annotate("text", x=12, label = expression(bold("c")), y =  0.12, size=5)+annotate("text", x=13, label = expression(bold("c")), y =  0.12, size=5)
+
+## Inoculated seed
+FEAST_result_long_Inoculated_Seed=FEAST_result_long[FEAST_result_long$Source_Habitat=="Inoculated_Seed"&FEAST_result_long$SynCom!="Control",]
+plot_Inoculated_Seed_contribution=ggplot(data=FEAST_result_long_Inoculated_Seed, aes(x=SynCom, y=Percent_Contrib, fill= SynCom)) + geom_boxplot(alpha=0.8) +geom_point(aes(x=SynCom, y=Percent_Contrib, color=SynCom, fill=SynCom), 
+             position=position_jitterdodge(jitter.width=0.5, dodge.width=0.7), 
+             size=4, alpha=1)+ theme_classic()+xlab("SynCom")+ylab("Source contribution (%)")+ theme(legend.text = element_text(color="black", size=15, face="bold"))+ theme(legend.title = element_text(color="black", size=15, face="bold"))	+ theme(axis.title = element_text(color="black", size=15, face="bold"))+ theme(axis.text = element_text(color="black", size=15, face="bold"))+scale_fill_manual(values = SynCom_color)+ scale_y_continuous(labels = scales::percent) +facet_wrap(~Source_Habitat,scale='free',labeller = labeller(Source_Habitat = label_source),)+scale_color_manual(values = SynCom_color)+guides(fill='none',color="none")+theme( axis.text.x = element_text(angle = 45,vjust=0.65),strip.text.x = element_text( size = 15, color = "black", face = "bold"))+
+  annotate("text", x=1, label = expression(bold("ab")), y =  0.92, size=5)+
+  annotate("text", x=2, label = expression(bold("c")), y =  1.05, size=5)+
+  annotate("text", x=3, label = expression(bold("acd")), y =  1.02, size=5)+
+  annotate("text", x=4, label = expression(bold("ab")), y =  0.78, size=5)+
+  annotate("text", x=5, label = expression(bold("cd")), y =  1.02, size=5)+
+  annotate("text", x=6, label = expression(bold("b")), y =  0.67, size=5)+
+  annotate("text", x=7, label = expression(bold("acd")), y =  1, size=5)+
+  annotate("text", x=8, label = expression(bold("ab")), y =  0.65, size=5)+
+  annotate("text", x=9, label = expression(bold("ad")), y =  0.85, size=5)+
+  annotate("text", x=10, label = expression(bold("ab")), y =  0.85, size=5)+
+  annotate("text", x=11, label = expression(bold("abcd")), y =  1.05, size=5)+
+  annotate("text", x=12, label = expression(bold("abcd")), y =  1.02, size=5)
+
+
+## Unknown
+
+FEAST_result_long_Unknown=FEAST_result_long[FEAST_result_long$Source_Habitat=="Unknown",]
+
+plot_Unknown_contribution=ggplot(data=FEAST_result_long_Unknown, aes(x=SynCom, y=Percent_Contrib, fill= SynCom)) + geom_boxplot(alpha=0.8) +geom_point(aes(x=SynCom, y=Percent_Contrib, color=SynCom, fill=SynCom), 
+             position=position_jitterdodge(jitter.width=0.5, dodge.width=0.7), 
+             size=4, alpha=1)+ theme_classic()+xlab("SynCom")+ylab("Source contribution (%)")+scale_fill_manual(values = SynCom_color)+ scale_y_continuous(labels = scales::percent) +facet_wrap(~Source_Habitat,scale='free',labeller = labeller(Source_Habitat = label_source),)+scale_color_manual(values = SynCom_color)+guides(fill='none',color="none")+theme( axis.text.x = element_text(angle = 45,vjust=0.65),strip.text.x = element_text( size = 15, color = "black", face = "bold"))+annotate("text", x=1, label = expression(bold("a")), y =  0.98, size=5)+annotate("text", x=2, label = expression(bold("bcd")), y =  0.3, size=5)+annotate("text", x=3, label = expression(bold("b")), y =  0.2, size=5)+annotate("text", x=4, label = expression(bold("cde")), y =  0.5, size=5)+annotate("text", x=5, label = expression(bold("f")), y =  0.8, size=5)+annotate("text", x=6, label = expression(bold("bc")), y =  0.25, size=5)+annotate("text", x=7, label = expression(bold("ef")), y =  0.85, size=5)+annotate("text", x=8, label = expression(bold("bcde")), y =  0.9, size=5)+annotate("text", x=9, label = expression(bold("f")), y =  0.8, size=5)+annotate("text", x=10, label = expression(bold("ef")), y =  0.90, size=5)+annotate("text", x=11, label = expression(bold("ef")), y =  0.8, size=5)+annotate("text", x=12, label = expression(bold("def")), y =  0.95, size=5)+annotate("text", x=13, label = expression(bold("bcdef")), y =  0.86, size=5)+ theme(legend.text = element_text(color="black", size=15, face="bold"))+ theme(legend.title = element_text(color="black", size=15, face="bold"))	+ theme(axis.title = element_text(color="black", size=15, face="bold"))+ theme(axis.text = element_text(color="black", size=15, face="bold"))
+library(cowplot)
+FIGURE_contribution=  plot_grid( plot_potting_soil_contribution + theme(legend.position="none"),
+           plot_Native_Seed_contribution + theme(legend.position="none"),
+           plot_Inoculated_Seed_contribution+ theme(legend.position="none"),
+           plot_Unknown_contribution+ theme(legend.position="none"),
+           align = 'vh',
+           hjust = -1,
+           nrow = 2
+           )
+
+
+
+```
+
+
+#FigS5
+
+###Panel A: Taxonomic profiles of the seedlings in the different for experiment 3 
+```{r}
+
+PS_exp3_rich_seedling_emerged=subset_samples(PS_run2_rich_rar,Type=="Seedling"&Emergence==1) #1032 taxa and 97 samples 
+
+
+PS_exp3_rich_seedling_emerged_relative=transform_sample_counts(PS_exp3_rich_seedling_emerged, function(x) x/sum(x)*100)
+
+
+#we remove inoculated strains
+badTaxa = inoc_strains
+allTaxa = taxa_names(PS_exp3_rich_seedling_emerged_relative)# 1032
+taxa_kept <- allTaxa[!(allTaxa %in% badTaxa)] 
+
+PS_exp3_rich_seedling_emerged_relative_noSC = prune_taxa(taxa_kept, PS_exp3_rich_seedling_emerged_relative) #1001 taxa and 97 samples
+PS_exp3_rich_seedling_emerged_relative_noSC_aggregated=aggregate_taxa(PS_exp3_rich_seedling_emerged_relative_noSC,level = "Genus")
+
+
+taxonomic_level <- "Genus"
+threshold <- 0.01  # 1 %
+
+physeq=PS_exp3_rich_seedling_emerged_relative_noSC_aggregated
+abundance_table <- as.data.frame(otu_table(physeq))
+
+total_abundance <- rowSums(abundance_table)
+
+absolute_threshold <- threshold * sum(total_abundance)
+
+genera_to_group <- rownames(abundance_table)[total_abundance < absolute_threshold]
+
+tax_table(physeq)[genera_to_group, taxonomic_level] <- "other"
+
+physeq <- tax_glom(physeq, taxonomic_level)
+
+genera_color=c("Asticcacaulis"="#999966","Castellaniella"="#809966","Chitiniphaga"="#ffcc99","Enterobacter"="#8C6BB1","Kosakonia"="#8C96C6","Massilia"="#774936","Methylophilus"="#6699ff","Paraburkholderia"="#666666","Pseudomonas"="#238443","Serratia"="#cc9999","Stenotrophomonas"="#CC0000","Unknown"="grey","other"="#000000")
+
+
+physeq_better=psmelt(physeq)
+
+labs_SC =c("3A"="3A", "3B"="3B", "3C"="3C", "5A"="5A", "5B"="5B", "5C"="5C", "8A"="8A", "8B"="8B", "8C"="8C", "11A"="11A", "11B"="11B", "11C"="11C","0"="Control")
+
+physeq_better$SynCom=factor(physeq_better$SynCom,levels=c("3A","3B","3C","5A","5B","5C","8A","8B","8C","11A","11B","11C","0"))
+       
+figS5A=ggplot(physeq_better, aes(x=Sample, y=Abundance, fill=Genus)) + geom_bar(stat="identity") + facet_wrap(~SynCom, scale="free",ncol = 6,labeller = labeller(SynCom = labs_SC))+theme_classic()+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),text = element_text(size = 20))+theme(axis.text.x = element_text(size = 5))+scale_fill_manual(values = genera_color,breaks = c("Asticcacaulis","Castellaniella","Chitiniphaga","Enterobacter","Kosakonia","Massilia","Methylophilus","Paraburkholderia","Pseudomonas","Serratia","Stenotrophomonas","Unknown","other"))+ylab("Relative abundance (%)")+theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+xlab("")
+
+
+```
+
+
+###Panel B: focus on Enterobacter cloaceae
+```{r}
+Enterobacter_cloaceae="CGACACGGATGACGGCACCGGTCTGCACCACATGGTATTCGAGGTGGTAGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGACATCGTGGTCACGATCCATGCGGACAACTCCGTCTCCGTCACCGATGACGGTCGTGGCATCCCAACCGGTATTCACCCGGAAGAGGGCGTATCGGCTGCGGAAGTTATCATGACCGTTCTGCACGCAGGCGGTAAGTTCGATGATAACTCCTATAAAGTT"
+
+PS_run2_rich_relative=transform_sample_counts(PS_run2_rich, function(x) x/sum(x)*100)
+PS_exp3_Enterobacter_cloaceae = prune_taxa(Enterobacter_cloaceae, PS_run2_rich_relative) 
+
+relative_abundance_entero_cloaceae=as.data.frame(otu_table(PS_exp3_Enterobacter_cloaceae))
+relative_abundance_entero_cloaceae<- tibble::rownames_to_column(relative_abundance_entero_cloaceae, "Sample_ID")
+colnames(relative_abundance_entero_cloaceae)=c("Sample_ID","Relative_abundance_E_cloacea")
+
+sample_data_entero=as.data.frame(sample_data(PS_run2_rich))
+sample_data_entero$Sample_ID=row.names(sample_data_entero)
+relative_abundance_entero_cloaceae=left_join(relative_abundance_entero_cloaceae,sample_data_entero,by="Sample_ID")
+
+relative_abundance_entero_cloaceae_emerged=relative_abundance_entero_cloaceae[relative_abundance_entero_cloaceae$Emergence==1,]
+
+stat_entero_cloaceae=summarySE(relative_abundance_entero_cloaceae_emerged, measurevar=c("Relative_abundance_E_cloacea"),groupvars=c("Type","SynCom"), na.rm = TRUE)
+plot_relative_abundance_entero_cloaceae=ggplot(relative_abundance_entero_cloaceae)+boxplot(aes(x=SynCom,y=Relative_abundance_E_cloacea))+facet_grid(~Type)
+
+
+stat_entero_cloaceae=stat_entero_cloaceae[1:13,]
+
+plot_figS5_B=ggplot(stat_entero_cloaceae,aes(x=SynCom,y=Relative_abundance_E_cloacea))+geom_point(size=5)+theme_classic()+xlab("SynCom")+ylab("Relative abundance of \n Enterobacter cloaceae (%)")+geom_errorbar(aes(ymin=Relative_abundance_E_cloacea-se, ymax=Relative_abundance_E_cloacea+se), width=.05, position=position_dodge(0.05))+ theme(axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(legend.title = element_text(color="black", face="bold"))+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),axis.text = element_text(color="black", face="bold"))+ theme(legend.text = element_text(color="black", face="bold"))+ theme(text = element_text(color="black", face="bold"))+theme(text = element_text(size = 20))+scale_x_discrete(limits=c("0","3A", "3B","3C","5A", "5B","5C","8A", "8B","8C","11A", "11B","11C"),labels=c("0"="Control"))+geom_text(aes(label = Letters, y = Relative_abundance_E_cloacea + se), vjust = -0.8,show.legend = FALSE,size=6,color="black")+ylim(0, 70)
+
+#STAT
+
+pp<-pairwise.wilcox.test(relative_abundance_entero_cloaceae_emerged$Relative_abundance_E_cloacea,g = relative_abundance_entero_cloaceae_emerged$SynCom,paired = F,p.adjust.method = "BH")
+mymat<-tri.to.squ(pp$p.value)
+myletters<-multcompLetters(mymat,compare="<=",threshold=0.05,Letters=letters)
+letter_group_e_cloaceae=as.data.frame.list(myletters)
+letter_group_e_cloaceae=letter_group_e_cloaceae[,1:2]
+letter_group_e_cloaceae$SynCom=row.names(letter_group_e_cloaceae)
+stat_entero_cloaceae=merge(letter_group_e_cloaceae,stat_entero_cloaceae,by="SynCom")
+
+```
+
+
+
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+

@@ -1,0 +1,266 @@
+---
+title: "Script for downstream analysis of MiSeq amplicon sequencing of the experiment 2"
+author: "Gontran Arnault"
+date: "2022, July 13th"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r directory, echo=FALSE}
+setwd("~/Documents/tmp/")
+```
+
+# Data information
+
+
+# 1 - Sequence analyses 
+
+## 1.1 - Remove primers with cutadapt v1.15
+
+This step is performed outside the R environment, need to have a folder with all the .gz files and cutadapt installed
+
+```
+gzip -d *.gz # to unzip GZ files
+ls *.gz | awk -F"_" {'print $1"_"$2"_"$3"_"'} | sort | uniq > group #to create a list of the fastq files to be analysed 
+for i in `cat group`; do ~/.local/bin/cutadapt --discard-untrimmed -o $i.gyrB.R1.fq -p $i.gyrB.R2.fq -g MGNCCNGSNATGTAYATHGG -G ACNCCRTGNARDCCDCCNGA -e 0.1  -O 20 $i*R1_001.fastq.gz $i*R2_001.fastq.gz; done
+```
+
+## 1.2 - Convert fastq to ASV table (dada2)
+
+```{r echo=FALSE, eval = FALSE}
+library("dada2"); packageVersion("dada2")
+#Adapt from https://benjjneb.github.io/dada2/tutorial.html
+path <- "/Users/garnault-admin/Documents/Thèse/Data/Run2_CC68_Concentration/Fastq/" #directory containing the fastq files after unzipping
+list.files(path)
+fnFs <- sort(list.files(path, pattern="gyrB.R1.fq", full.names = TRUE)) # Forward and reverse fastq filenames have format: SAMPLENAME_R1_001.fastq and SAMPLENAME_R2_001.fastq
+fnRs <- sort(list.files(path, pattern="gyrB.R2.fq", full.names = TRUE))
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1) # Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+plotQualityProfile(fnFs[50:55]) #select 200 
+plotQualityProfile(fnRs[50:55]) #select 150 
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+# standard filtering parameters: maxN=0 (DADA2 requires no Ns), truncQ=2, rm.phix=TRUE and maxEE=2. The maxEE parameter sets the maximum number of “expected errors” allowed in a read, which is a better filter than simply averaging quality scores.
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(200,150),
+                     maxN=0, maxEE=c(1,1), truncQ=5, rm.phix=TRUE,
+                     compress=TRUE, multithread=TRUE) 
+head(out)
+
+# Learn the Error Rates
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+plotErrors(errF, nominalQ=TRUE) #visualize the estimated error rates, estimated error rates (black line) have to fit to the observed rates (points)
+
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE) #without pooling or pseudo-pooling (no need to detect rare ASV)
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+dadaFs[[1]] #Inspecting the returned dada-class object
+
+
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE) #merge the forward and reverse reads together to obtain the full denoised sequences
+#By default, merged sequences are only output if the forward and reverse reads overlap by at least 12 bases, and are identical to each other in the overlap region (but these conditions can be changed via function arguments).
+
+head(mergers[[1]]) # Inspect the merger data.frame from the first sample
+
+seqtab <- makeSequenceTable(mergers) #Construct an amplicon sequence variant table (ASV) table
+dim(seqtab)
+table(nchar(getSequences(seqtab))) #Inspect distribution of sequence lengths
+
+#remove non-target-length sequences from your sequence table; Since gyrB is a protein-coding genes only triplets should be conserved (244-247-250-253-256-259-262-265-268)
+seqtab244 <- seqtab[,nchar(colnames(seqtab)) %in% 244]
+seqtab247 <- seqtab[,nchar(colnames(seqtab)) %in% 247]
+seqtab250 <- seqtab[,nchar(colnames(seqtab)) %in% 250]
+seqtab253 <- seqtab[,nchar(colnames(seqtab)) %in% 253]
+seqtab256 <- seqtab[,nchar(colnames(seqtab)) %in% 256]
+seqtab259 <- seqtab[,nchar(colnames(seqtab)) %in% 259]
+seqtab262 <- seqtab[,nchar(colnames(seqtab)) %in% 262]
+seqtab265 <- seqtab[,nchar(colnames(seqtab)) %in% 265]
+seqtab268 <- seqtab[,nchar(colnames(seqtab)) %in% 268]
+#Merge all files
+seq.final <- cbind(seqtab244, seqtab247, seqtab250, seqtab253, seqtab256, seqtab259, seqtab262, seqtab265, seqtab268) 
+dim(seq.final)
+plot(table(nchar(getSequences(seq.final)))) #plot the distribution of sequence lengths
+sum(seq.final)/sum(seqtab) #we keep 99,91% of the sequence
+
+#Detect/Remove chimera
+seqtab.nochim <- removeBimeraDenovo(seq.final, method="consensus", multithread=TRUE, verbose=TRUE)
+
+ncol(seqtab.nochim)/ncol(seq.final) #chimeras make up about 54,99% of the merged sequence variants
+(1-sum(seqtab.nochim)/sum(seq.final)) #abundances of those variants account for only about 13% of the merged sequence reads
+
+#Detect stop codons
+#Summary to look at the number of reads that made it through each step in the pipeline
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+
+#Sort ASV by descending order
+asvgyrB_run1 <- seqtab.nochim[, order(colSums(-seqtab.nochim))]
+
+library("metagMisc")
+asvgyrB_md5=dada_to_fasta(seqtab.nochim,out="DADA2.fasta",hash="md5")
+
+saveRDS(asvgyrB_run1, "ASV_gyrB_run1.rds")
+
+#Taxonomic affiliation
+taxa.g_run1 <- assignTaxonomy(asvgyrB_run1, "~/Documents/Thèse/Data/database/train_set_gyrB_v5.fa.gz", multithread=TRUE)
+taxa.print.g_run1 <- taxa.g_run1 # Removing sequence rownames for display only
+rownames(taxa.print.g_run1) <- NULL
+head(taxa.print.g_run1)
+saveRDS(taxa.g_run1, "gyrB_taxo_run1.rds")
+
+```
+
+```
+perl Documents/Scripts/fastaGenerateMD5.pl -f
+Documents/Genome_sequences/16S-gyrB/sequences_gyrB.fasta -ot
+Documents/test_gyrB
+```
+
+## 1.3 - Construct phyloseq object
+
+```{r phyloseq, echo=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+design_run1 <- read.csv("/Users/garnault-admin/Documents/Thèse/Data/Run2_CC68_Concentration/Design_run1_conc.csv", sep = ";",  check.names=FALSE, row.names=1)
+asvgyrB_run1 <- readRDS("ASV_gyrB_run1.rds")
+taxgyrB_run1 <- readRDS("gyrB_taxo_run1.rds")
+psgyrB_0_run1 <- phyloseq(tax_table(taxgyrB_run1), sample_data(design_run1),
+                     otu_table(asvgyrB_run1, taxa_are_rows = FALSE)) # 12299 taxa and 212 samples
+
+
+saveRDS(psgyrB_0_run1, "PS_run1_concentration_notree.rds") 
+psgyrB_0_run1=readRDS("PS_run1_concentration_notree.rds")
+```
+
+Adding refseq object and rename ASVs sequence by md5 names 
+
+```{r, echo=FALSE}
+#Rename ASV
+dna.gyrB_run1 <- Biostrings::DNAStringSet(taxa_names(psgyrB_0_run1))
+names(dna.gyrB_run1) <- taxa_names(psgyrB_0_run1)
+
+psgyrB_0_run1<- merge_phyloseq(psgyrB_0_run1, dna.gyrB_run1)
+
+```
+
+Exporting tax table and otu table to check for contaminants
+
+```{r}
+write.csv(as.data.frame(t(otu_table(psgyrB_0_run1))),file="/Users/garnault-admin/Documents/Thèse/Analyses/SynCom/Run1/Metabarcoding/ASV_tablerunConcentration.csv")
+write.csv(as.data.frame(tax_table(psgyrB_0_run1)), file="/Users/garnault-admin/Documents/Thèse/Analyses/SynCom/Run1/Metabarcoding/tax_table_concentration.csv")
+```
+
+## 1.4 - Filtering
+
+Removed contaminants by looking at weird taxa in control samples and then remove positive and negative controls
+
+```{r, echo=FALSE, results='hide'}
+
+#PCR or DNA extraction contamination
+Diaphorobacter_unclassified1="CGATACGTCGGACGGCACAGGCCTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGACGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCCATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCGCTGACCGAACTGCACGCCGGTGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+
+Rudaea_cellulosilytica="CAACGTCAACGACGGTTCCGGTTTGCACCACATGGTGTTCGAGGTGGTGGACAACTCGGTCGACGAGGCGCTCGCCGGCCATGCCGATGCCGTGCTGGTGAAAATCCATGCGGATGGCTCGGTTTCGGTTTCGGATAACGGCCGCGGCATCCCGGTGGGCCGGCATGCGACGGAAAGCGAAAAGCAGGGCCGCGACGTCTCCGCTGCCGAAGTGGTAATGACGGTGCTGCACGCCGGCGGCAAATTCGATGACAACAGCTACAAGGTT"
+
+Diaphorobacter_unclassified2="CGACACGTCCGACGGCACAGGCCTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGACGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCCATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCGCTGACCGAACTGCACGCCGGTGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+
+Erwinia_persicina="CGATACGGATGACGGTACCGGTCTGCATCACATGGTATTTGAGGTCGTGGATAACGCCATTGACGAAGCGCTCGCCGGTCACTGTTCCGATATTCTTGTCACTATTCATGCTGATAACTCCGTTTCCGTTGTGGATGATGGCCGTGGTATTCCGACCGGTATTCACGAAGAAGAAGGCATCTCAGCTGCTGAAGTGATCATGACCGTGCTGCACGCCGGCGGTAAGTTCGACGATAACTCTTATAAAGTC"
+
+Alicycliphilus_unclassified="CGATACGTCCGACGGCACCGGCCTGCACCACCTGGTCTTCGAGGTGGTGGACAACTCCATCGACGAGGCCCTGGCCGGCCACTGCGACGACATCGTCGTCACCATCCACACCGACAACTCGATCAGCGTGGTGGACAACGGCCGCGGCATTCCCACCGGCGTGAAGATGGACGACAAGCACGAGCCCAAGCGCTCGGCCGCCGAGATCGCCCTGACCGAGCTGCACGCCGGCGGCAAGTTCAACCAGAACAGCTACAAGGTC"
+
+#Soil conta
+Microbacterium_barkeri1="CTCCACGGGTCCGCGCGGTCTGCACCACCTGGTGTACGAGATCGTCGACAACTCGGTCGACGAGGCCCTCGCGGGGTACGCCGACACGATCCTGGTGACGATGCTCGCCGACGGCGGGGTCCGCGTGGTGGACAACGGCCGTGGCATCCCCGTCGATCCGCACTCCTCCGACCCGAACAAGTCGACGGTCGAGGTCGTGCTGACGATCCTGCACGCCGGCGGCAAGTTCGGCGGCGGCGCCTACGCGGTC"
+
+Microbacterium_barkeri2="CTCCACGGGTCCGCGCGGTCTGCACCACCTGGTGTACGAGATCATCGACAACTCGGTCGACGAGGCCCTCGCGGGGTACGCCGACACGATCCTGGTGACGATGCTCGCCGACGGCGGGGTCCGCGTGGTGGACAACGGCCGTGGCATCCCCGTCGATCCGCACTCCTCCGACCCGAACAAGTCGACGGTCGAGGTCGTGCTGACGATCCTGCACGCCGGCGGCAAGTTCGGCGGCGGCGCCTACGCGGTC"
+
+Microbacterium_barkeri3="CTCCACGGGTCCGCGCGGTCTGCACCACCTGGTGTACGAGATCGTCGACAACTCGGTCGTCGAGGCCCTCGCGGGGTACGCCGACACGATCCTGGTGACGATGCTCGCCGACGGCGGGGTCCGCGTGGTGGACAACGGCCGTGGCATCCCCGTCGATCCGCACTCCTCCGACCCGAACAAGTCGACGGTCGAGGTCGTGCTGACGATCCTGCACGCCGGCGGCAAGTTCGGCGGCGGCGCCTACGCGGTC"
+
+all_conta_run1=c(Diaphorobacter_unclassified1,Rudaea_cellulosilytica,Diaphorobacter_unclassified2,Erwinia_persicina,Alicycliphilus_unclassified,Microbacterium_barkeri1,Microbacterium_barkeri2,Microbacterium_barkeri3)
+
+pop_taxa = function(physeq, badTaxa){
+  allTaxa = taxa_names(physeq)
+  myTaxa <- allTaxa[!(allTaxa %in% badTaxa)]
+  return(prune_taxa(myTaxa, physeq))
+}
+
+psgyrB_0_run1 #12299 taxa and 212 samples
+psgyrB_2_run1 = pop_taxa(psgyrB_0_run1,all_conta_run1) #12291 taxa and 212 samples
+psgyrB_3_run1 <- subset_samples(psgyrB_2_run1, Sample_Type =="Sample") 
+psgyrB_3_run1 <- filter_taxa(psgyrB_3_run1, function(x) sum(x) > 0, TRUE) #12026 taxa and 198 samples
+
+
+```
+
+Filter ASV :  20 counts, 2 samples
+
+```{r}
+
+psgyrB_4_run1 <- filter_taxa(psgyrB_3_run1, function(x) sum(x) > 20, TRUE) #ASVs must have at least 20 reads   --> 3200 taxa and 198 samples 
+psgyrB_4_run1 = phyloseq_filter_prevalence(psgyrB_4_run1,prev.trh = 2/198,abund.trh = NULL ) #ASVs must be found in at least 2 samples -->  2716 taxa and 198 samples
+
+
+```
+
+Removed gyrB ASV not affiliated at the kingdom level and phylum level.
+Removed gyrB ASV affiliated as parE (a paralog of gyrB)
+
+```{r, echo=FALSE}
+psgyrB_5_run1 <- subset_taxa(psgyrB_4_run1, !is.na(Kingdom) & !Kingdom %in% c("parE") & !is.na(Phylum)) ## 2043 taxa and 198 samples
+```
+
+## 1.6 - Phylogenetic tree
+Perform NJ tree for 16S and gyrB - this take a long time so we upload a phyloseq object with the phylogenetic already incorporated.
+```{r, echo=FALSE}
+library("DECIPHER"); packageVersion("DECIPHER")
+library("phangorn"); packageVersion("phangorn")
+seqs.gyrB_run1 <- refseq(psgyrB_5_run1)
+alignment.gyrB_run1 <- AlignTranslation(seqs.gyrB_run1, sense = "+", readingFrame = 2, type ="DNAStringSet") 
+phang.align.gyrB_run1 <- phyDat(as(alignment.gyrB_run1, "matrix"), type="DNA")
+dm.gyrB_run1 <- dist.ml(phang.align.gyrB_run1)
+treeNJ.gyrB_run1 <- NJ(dm.gyrB_run1) # Note, tip order != sequence order
+dgyrB_run1 <- phyloseq(tax_table(psgyrB_5_run1), sample_data(psgyrB_5_run1),
+                 otu_table(psgyrB_5_run1, taxa_are_rows = FALSE), refseq(psgyrB_5_run1), phy_tree(treeNJ.gyrB_run1)) #2043 taxa and 198 samples
+
+```
+
+##1.7 - SNPs filtering
+Few changes in design sheet and identification of SNPs using inoculum samples
+
+```{r}
+dgyrB_run1
+design <- read.csv("/Users/garnault-admin/Documents/Thèse/Data/Run2_CC68_Concentration/Design_run1_conc.csv", sep = ";",  check.names=FALSE, row.names=1)
+sample_data(dgyrB_run1)=design
+
+inocula=subset_samples(dgyrB_run1,Plant_type=="Inoculum") 
+inocula <- filter_taxa(inocula, function(x) sum(x) > 0, TRUE) #42 taxa and 8 samples
+
+#Identification of few SNPs on inocula samples
+
+write.csv2(as.data.frame(t(otu_table(inocula))),"/Users/garnault-admin/Documents/Thèse/Data/Run2_CC68_Concentration/Looking_for_SNPs_run1.csv")
+write.csv2(as.data.frame(tax_table(inocula)),"/Users/garnault-admin/Documents/Thèse/Data/Run2_CC68_Concentration/Looking_for_SNPs_tax_run1.csv")
+
+#remove SNPs
+
+SNPs_run_concentration=c("CGACACGGATGACGGCACCGGTCTGCACCACATGGTATTTGAGATTGTGGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGACATCGTGGTGACCATCCACGCCGACAACTCCGTCTCCGTAACCGATGATGGCCGTGGCATCCCGACCGGTATCCACCCGGAAGAGGGCGTCTCTGCGGCGGAAGTGATCATGACCGTCCTGCACGCAGGCGGTAAGTTCGATGATAACTCCTATAAAGTC","CGACACGGATGACGGCACCGGTCTGCACCACATGGTATTTGAGGTTGTGGATAACGCTATCGACGAAGCGCTCGCGGGTCACTGTAAAGACATCGTGGTGACGATCCACGCCGACAACTCCGTCTCCGTAACCGATGATGGCCGTGGCATCCCGACCGGTATCCACCCTGAAGAGGGCGTCTCTGCAGCGGAAGTTATCATGACCGTCCTGCACGCAGGCGGTAAGTTCGATGATAACTCCTATAAAGTA","CGACACCTCGGACGGCACCGGCCTGCACCACCTGGTGTTCGAAATCCTCGACAACTCGATCGACGAAGCGCTGGCCGGTTATTGCACCGAGATCCACGTCACCATCCACTCCGACAACTCGATTTCGATCACCGACAACGGCCGCGGCATTCCGACCGGCGTCAAGATGGACGACAAGCACGAGCCAAAGCGCTCGGCAACCGAGATCGCCCTGACCGAACTGCACGCGGGCGGCAAGTTCAACCAGAACTCCTACAAGGTG","CGATACCGATGACGGTACCGGTCTGCATCACATGGTATTCGAGATCGTGGATAACGCAATCGACGAAGCGCTCGCTGGTCACTGTAGTGACATTGTGGTCACCATCCATGCCGATAACTCCGTATCGGTGCAGGATGATGGACGCGGCATTCCTACCGGTATTCACGAAGAAGAGGGCATCTCTGCCGCTGAAGTGATCATGACCGTGCTGCATGCTGGCGGTAAGTTCGATGATAACTCCTATAAAGTC","CGATACCGATGACGGTACCGGTCTGCATCACATGGTATTCGAGGTCGTGGATAATGCAATCGACGAAGCGCTCGCTGGTCACTGTAGTGACATTGTGGTCACCATCCATGCCGATAACTCCGTATCGGTGCAGGATGATGGACGCGGCATTCCTACCGGTATTCACGAAGAAGAGGGCATCTCTGCCGCTGAAGTGATCATGACCGTGCTGCATGCTGGCGGTAAGTTCGATGATAACTCCTATAAAGTC","TGACACCGACGATGGCAGCGGTCTGCACCACATGGTGTTCGAGGTGGTCGATAACTCGATCGACGAAGCTTTGGCCGGCCACTGCGACGACATCAGCATCATCATTCACCCGGATGAGTCCATCACCGTTCGCGACAACGGCCGTGGCATCCCGGTAGACGTGCACAAAGAAGAAGGTGTTTCGGCTGCAGAGGTCATCATGACCGTGTTGCACGCCGGCGGTAAGTTCGACGACAACTCCTACAAAGTA","CGACACTGATGACGGTAGCGGTCTGCACCACATGGTGTTCGAGATGGTCGACAACTCCATCGACGAAGCTTTGGCCGGTCACTGCGACGACATCAGCATCATCATCCACCCGGATGAATCCATTACCGTGCGCGACAACGGTCGTGGCATTCCGGTAGATGTGCACAAAGAAGAAGGCGTTTCGGCGGCAGAGGTCATCATGACCGTGCTCCACGCTGGCGGTAAGTTCGACGATAACTCCTATAAAGTA","TGATACCGATGATGGCAGCGGTCTGCACCACATGGTGTTCGAGGTGGTCGATAACTCGATCGACGAAGCTTTGGCCGGTCACTGCGACGACATCAGTATCATCATCCACCCGGACGAATCCATCACCGTGCGCGACAACGGTCGCGGCATCCCGGTAGATGTGCATAAAGAAGAAGGCGTTTCGGCGGCAGAGGTCATCATGACCGTGCTCCACGCCGGCGGTAAGTTCGACGACAACTCCTACAAAGTA","TGACACCGACGATGGCAGCGGTCTGCACCACATGGTGTTCGAGATGGTCGACAACTCGATCGACGAAGCCCTCGCCGGCCATTGCGACGACATCAGCATCATCATCCACCCGGACGAGTCCATCACCGTTAAAGACAACGGTCGTGGCATCCCGGTAGACGTGCATAAAGAGGAAGGCGTTTCTGCCGCTGAGGTCATCATGACCGTCCTTCACGCTGGCGGTAAGTTCGACGACAACTCCTACAAGGTT","CGATACAGACGACGGTAGCGGTCTGCATCACATGGTATTCGAAATGGTTGATAACTCGATCGACGAAGCATTGGCAGGCCATTGCGACGACATCAGTATCATCATCCACCCTGACGAATCGATCACCGTCCGCGACAACGGTCGCGGTATTCCGGTAGACGTGCACAAAGAAGAAGGCGTGTCGGCAGCTGAGGTCATCATGACCGTGCTCCACGCTGGCGGTAAGTTCGACGACAACTCGTACAAGGTG","CGATACGGATGACGGGTCCGGCCTGCATCACATGGTCTATGAAATTGTCGATAACGCGATCGACGAAGCGCTTGCCGGTCATGCCGATATCGTAACCGTTACGCTCAATGCCGATGGCTCTGTCAGCGTCACCGATAACGGCCGTGGTATTCCGACGGATATCCATAAGGAAGAAGGCGTTTCGGCAGCCGAGGTCATCATGACCCAGCTGCATGCCGGCGGCAAATTCGACCAGAATTCCTACAAGGTT","CGACACCGACGACGGTTCGGGCCTCCACCACATGGTGTTCGAGATGTCGGACAATGCGATCGACGAGGCGCTGGCGGGGCATTGCGACCGCATCGACATCCAGCTGAACGCCGACGGGTCGGTCAGCGTCACCGATAACGGTCGCGGCATCCCGACCGGCATCCACCCCGAAGAGGGCGTGTCGGCGGCCGAGGTCATCATGACCCAGCTCCATGCGGGCGGAAAGTTCGAGAATACCAGCGACGATAACGCCTATAAGGTG","CGACGTCCATGACGGTACCGGTCTGCACCACATGGTGTTCGAGGTCGTCGACAACTCCATCGATGAAGCCTTGGCCGGCCACGCCGACCACGTGTCTGTGATGATTCACGCCGATGGCTCGGTCTCCGTCTCCGACAACGGTCGCGGTATCCCGACCGGCAAGCACGAGCAGATGAGCAAGAAGCTCGACCGCGACGTGTCTGCTGCCGAAGTGGTCATGACCGTGCTGCACGCAGGCGGCAAGTTCGACGACAACAGCTACAAGGTG")
+
+dgyrB_run1=pop_taxa(dgyrB_run1,SNPs_run_concentration) #2030 taxa and 198 samples
+#dgyrB_run1 = subset_taxa(dgyrB_run1, Species != "Cutibacterium_acnes")  #898 taxa and 198 samples
+
+saveRDS(dgyrB_run1, "PS_exp2_filtered.rds") 
+
+
+```
+
+
+
+
+
+
+
+
