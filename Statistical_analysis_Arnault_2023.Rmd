@@ -1742,8 +1742,6 @@ feast_11C_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula
 
 ```
 
-Ici mettre script Marie
-
 ####Import FEAST results for plotting
 ```{r}
 FEAST_result <- read.table("FEAST_results_allSynComs_source_contributions_matrix.txt", header=TRUE, check.names = FALSE, sep = "\t")
