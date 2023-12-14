@@ -1556,7 +1556,7 @@ fig5D=barplot(p4dbis, bar.col=(carni.lipa$p.value < 0.05) + 1, center = FALSE , 
 
 #Figure 6
 
-###Panel A: sources-sink analysis using FEAST
+###Panel A: sources-sink analysis using FEAST - see also FEAST.rdm by Marie Simonin
 
 ```{r}
 
@@ -1741,8 +1741,8 @@ feast_11C_inocula=merge_phyloseq(potting_soil_source,control_seed_source,inocula
 
 
 ```
-
-####Import FEAST results for plotting
+#### FEAST analysis was conducted by Marie Simonin; see FEAST.rmd for detailed
+####Import FEAST results from FEAST.rmd for plotting
 ```{r}
 FEAST_result <- read.table("FEAST_results_allSynComs_source_contributions_matrix.txt", header=TRUE, check.names = FALSE, sep = "\t")
 
