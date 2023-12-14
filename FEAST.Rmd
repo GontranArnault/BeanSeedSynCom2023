@@ -1,0 +1,206 @@
+---
+title: "FEAST"
+author: "Marie Simonin"
+date: "2023-09-07"
+output: html_document
+---
+
+#Source - sink analysis with FEAST, https://github.com/cozygene/FEAST
+
+###Load datasets - one phyloseq object per SynCom / control
+```{r}
+library(phyloseq)
+FEAST_3A <- readRDS("feast_3A_inoculatedseed.rds")
+FEAST_3A <- prune_taxa(taxa_sums(FEAST_3A)>0, FEAST_3A)
+FEAST_3A
+FEAST_3B <- readRDS("feast_3B_inoculatedseed.rds")
+FEAST_3B <- prune_taxa(taxa_sums(FEAST_3B)>0, FEAST_3B)
+FEAST_3B
+FEAST_3C <- readRDS("feast_3C_inoculatedseed.rds")
+FEAST_3C <- prune_taxa(taxa_sums(FEAST_3C)>0, FEAST_3C)
+FEAST_3C
+FEAST_5A <- readRDS("feast_5A_inoculatedseed.rds")
+FEAST_5A <- prune_taxa(taxa_sums(FEAST_5A)>0, FEAST_5A)
+FEAST_5A
+FEAST_5B <- readRDS("feast_5B_inoculatedseed.rds")
+FEAST_5B <- prune_taxa(taxa_sums(FEAST_5B)>0, FEAST_5B)
+FEAST_5B
+FEAST_5C <- readRDS("feast_5C_inoculatedseed.rds")
+FEAST_5C <- prune_taxa(taxa_sums(FEAST_5C)>0, FEAST_5C)
+FEAST_5C
+FEAST_8A <- readRDS("feast_8A_inoculatedseed.rds")
+FEAST_8A <- prune_taxa(taxa_sums(FEAST_8A)>0, FEAST_8A)
+FEAST_8A
+FEAST_8B <- readRDS("feast_8B_inoculatedseed.rds")
+FEAST_8B <- prune_taxa(taxa_sums(FEAST_8B)>0, FEAST_8B)
+FEAST_8B
+FEAST_8C <- readRDS("feast_8C_inoculatedseed.rds")
+FEAST_8C <- prune_taxa(taxa_sums(FEAST_8C)>0, FEAST_8C)
+FEAST_8C
+FEAST_11A <- readRDS("feast_11A_inoculatedseed.rds")
+FEAST_11A <- prune_taxa(taxa_sums(FEAST_11A)>0, FEAST_11A)
+FEAST_11A
+FEAST_11B <- readRDS("feast_11B_inoculatedseed.rds")
+FEAST_11B <- prune_taxa(taxa_sums(FEAST_11B)>0, FEAST_11B)
+FEAST_11B
+FEAST_11C <- readRDS("feast_11C_inoculatedseed.rds")
+FEAST_11C <- prune_taxa(taxa_sums(FEAST_11C)>0, FEAST_11C)
+FEAST_11C
+FEAST_Control <- readRDS("feast_control_seedling.rds")
+FEAST_Control <- prune_taxa(taxa_sums(FEAST_Control)>0, FEAST_Control)
+FEAST_Control
+
+##Prepare files, FEAST requires an ASV table with taxa in columns and samples in rows and a metadata table with 4 columns : SampleID, Env, SourceSink, id
+FEAST_3A_otu <- data.frame(otu_table(FEAST_3A))
+FEAST_3A_otut=t(FEAST_3A_otu)
+#export OTU table
+#write.table(FEAST_3A_otut, "FEAST_3A_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_3A_otu_meta <- data.frame(sample_data(FEAST_3A))
+#write.table(FEAST_3A_otu_meta, "FEAST_3A_otu_meta.txt", sep = "\t")
+
+FEAST_3B_otu <- data.frame(otu_table(FEAST_3B))
+FEAST_3B_otut=t(FEAST_3B_otu)
+#export OTU table
+#write.table(FEAST_3B_otut, "FEAST_3B_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_3B_otu_meta <- data.frame(sample_data(FEAST_3B))
+#write.table(FEAST_3B_otu_meta, "FEAST_3B_otu_meta.txt", sep = "\t")
+
+FEAST_3C_otu <- data.frame(otu_table(FEAST_3C))
+FEAST_3C_otut=t(FEAST_3C_otu)
+#export OTU table
+#write.table(FEAST_3C_otut, "FEAST_3C_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_3C_otu_meta <- data.frame(sample_data(FEAST_3C))
+#write.table(FEAST_3C_otu_meta, "FEAST_3C_otu_meta.txt", sep = "\t")
+
+FEAST_5A_otu <- data.frame(otu_table(FEAST_5A))
+FEAST_5A_otut=t(FEAST_5A_otu)
+#export OTU table
+#write.table(FEAST_5A_otut, "FEAST_5A_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_5A_otu_meta <- data.frame(sample_data(FEAST_5A))
+#write.table(FEAST_5A_otu_meta, "FEAST_5A_otu_meta.txt", sep = "\t")
+
+FEAST_5B_otu <- data.frame(otu_table(FEAST_5B))
+FEAST_5B_otut=t(FEAST_5B_otu)
+#export OTU table
+#write.table(FEAST_5B_otut, "FEAST_5B_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_5B_otu_meta <- data.frame(sample_data(FEAST_5B))
+#write.table(FEAST_5B_otu_meta, "FEAST_5B_otu_meta.txt", sep = "\t")
+
+FEAST_5C_otu <- data.frame(otu_table(FEAST_5C))
+FEAST_5C_otut=t(FEAST_5C_otu)
+#export OTU table
+#write.table(FEAST_5C_otut, "FEAST_5C_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_5C_otu_meta <- data.frame(sample_data(FEAST_5C))
+#write.table(FEAST_5C_otu_meta, "FEAST_5C_otu_meta.txt", sep = "\t")
+
+FEAST_8A_otu <- data.frame(otu_table(FEAST_8A))
+FEAST_8A_otut=t(FEAST_8A_otu)
+#export OTU table
+#write.table(FEAST_8A_otut, "FEAST_8A_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_8A_otu_meta <- data.frame(sample_data(FEAST_8A))
+#write.table(FEAST_8A_otu_meta, "FEAST_8A_otu_meta.txt", sep = "\t")
+
+FEAST_8B_otu <- data.frame(otu_table(FEAST_8B))
+FEAST_8B_otut=t(FEAST_8B_otu)
+#export OTU table
+#write.table(FEAST_8B_otut, "FEAST_8B_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_8B_otu_meta <- data.frame(sample_data(FEAST_8B))
+#write.table(FEAST_8B_otu_meta, "FEAST_8B_otu_meta.txt", sep = "\t")
+
+FEAST_8C_otu <- data.frame(otu_table(FEAST_8C))
+FEAST_8C_otut=t(FEAST_8C_otu)
+#export OTU table
+#write.table(FEAST_8C_otut, "FEAST_8C_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_8C_otu_meta <- data.frame(sample_data(FEAST_8C))
+#write.table(FEAST_8C_otu_meta, "FEAST_8C_otu_meta.txt", sep = "\t")
+
+FEAST_11A_otu <- data.frame(otu_table(FEAST_11A))
+FEAST_11A_otut=t(FEAST_11A_otu)
+#export OTU table
+#write.table(FEAST_11A_otut, "FEAST_11A_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_11A_otu_meta <- data.frame(sample_data(FEAST_11A))
+#write.table(FEAST_11A_otu_meta, "FEAST_11A_otu_meta.txt", sep = "\t")
+
+FEAST_11B_otu <- data.frame(otu_table(FEAST_11B))
+FEAST_11B_otut=t(FEAST_11B_otu)
+#export OTU table
+#write.table(FEAST_11B_otut, "FEAST_11B_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_11B_otu_meta <- data.frame(sample_data(FEAST_11B))
+#write.table(FEAST_11B_otu_meta, "FEAST_11B_otu_meta.txt", sep = "\t")
+
+FEAST_11C_otu <- data.frame(otu_table(FEAST_11C))
+FEAST_11C_otut=t(FEAST_11C_otu)
+#export OTU table
+#write.table(FEAST_11C_otut, "FEAST_11C_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_11C_otu_meta <- data.frame(sample_data(FEAST_11C))
+#write.table(FEAST_11C_otu_meta, "FEAST_11C_otu_meta.txt", sep = "\t")
+
+FEAST_Control_otu <- data.frame(otu_table(FEAST_Control))
+FEAST_Control_otut=t(FEAST_Control_otu)
+#export OTU table
+#write.table(FEAST_Control_otut, "FEAST_Control_otut.txt", sep = "\t")
+#export metadata file to be edited with columns Env and SourceSink and id 
+FEAST_Control_otu_meta <- data.frame(sample_data(FEAST_Control))
+#write.table(FEAST_Control_otu_meta, "FEAST_Control_otu_meta.txt", sep = "\t")
+```
+
+##Run FEAST for each SynCom separately
+```{r}
+library(FEAST)
+
+#load metadata table
+metadata <- Load_metadata(metadata_path = "~/OneDrive/INRA/Projets/SUCSEED/Thèse Gontran/FEAST/FEAST_8A_otu_meta.txt")
+#load otu table
+otus <- Load_CountMatrix(CountMatrix_path = "~/OneDrive/INRA/Projets/SUCSEED/Thèse Gontran/FEAST/FEAST_8A_otut.txt")
+
+FEAST_output <- FEAST(C = otus, metadata = metadata, different_sources_flag = 0, dir_path = "./", outfile="FEAST_results_8A.txt")
+```
+
+####Import FEAST results for plotting
+```{r}
+FEAST_result <- read.table("FEAST_results_allSynComs_source_contributions_matrix.txt", header=TRUE, check.names = FALSE, sep = "\t")
+
+#transform to long format
+library(reshape2)
+FEAST_result_long=setNames(melt(FEAST_result), c("Sink", "SynCom", 'Source_Habitat', 'Percent_Contrib'))
+dim(FEAST_result_long)
+head(FEAST_result_long)
+
+```
+
+```{r}
+#figure of percent contribution of each source by seedling
+library(ggplot2)
+
+FEAST_result_long$SynCom<-ordered(FEAST_result_long$SynCom, levels=c("3A", "3B", "3C", "5A", "5B", "5C", "8A", "8B", "8C", "11A", "11B", "11C", "Control"))
+
+color <-  c("Soil"='#c05805','Native_Seed'='lightblue' , "Inoculated_Seed"="yellow", "Unknown"="black")
+
+#stacked bar by sample
+Source_contrib=ggplot(data=FEAST_result_long, aes(x=Sink, y=Percent_Contrib, fill=Source_Habitat)) + geom_bar(aes(), stat="identity", position="stack") + theme_classic()+xlab("Seedlings")+ylab("% Source Contribution")+ggtitle("Seedlings")+ guides(fill=guide_legend(title="Source Habitat"))+ theme(legend.text = element_text(color="black", size=10, face="bold"))+ theme(legend.title = element_text(color="black", size=12, face="bold"))	+ theme(axis.title = element_text(color="black", size=11, face="bold"))+ theme(axis.text = element_text(color="black", size=5, face="bold"))+facet_wrap(~SynCom, scales = "free", ncol = 4)+ theme(axis.text.x = element_text(angle = 90, hjust = 1))+scale_fill_manual(values = color)+ theme(strip.text.x = element_text(size=10, face = "bold")) + theme(legend.position = c(0.4, 0.1))
+Source_contrib
+```
+
+```{r}
+#average contribution of sources for each SynCom
+library(ggplot2)
+
+FEAST_result_long$SynCom<-ordered(FEAST_result_long$SynCom, levels=c("3A", "3B", "3C", "5A", "5B", "5C", "8A", "8B", "8C", "11A", "11B", "11C", "Control"))
+
+SynCom_color=c('Control'="black",'3A'="#74c69d",'3B'="#52b788",'3C'="#40916c",'5A'="#61a5c2",'5B'="#468faf",'5C'="#2c7da0",'8A'="#a68a64",'8B'="#936639",'8C'="#7f4f24",'11A'="#bc3908",'11B'="#941b0c",'11C'="#621708")
+
+Source_aver=ggplot(data=FEAST_result_long, aes(x=Source_Habitat, y=Percent_Contrib, fill=SynCom)) + geom_boxplot() + theme_classic()+xlab("Sources")+ylab("% Source Contribution")+ggtitle("Seedlings")+ guides(fill=guide_legend(title="SynComs"))+ theme(legend.text = element_text(color="black", size=10, face="bold"))+ theme(legend.title = element_text(color="black", size=12, face="bold"))	+ theme(axis.title = element_text(color="black", size=11, face="bold"))+ theme(axis.text = element_text(color="black", size=11, face="bold"))+scale_fill_manual(values = SynCom_color)+ scale_y_continuous(labels = scales::percent) 
+Source_aver
+```
