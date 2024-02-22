@@ -1,0 +1,12 @@
+Sample_ID	Env	SourceSink	id
+Potting_soil	Soil	Source	
+Control_seed	Native seed	Source	
+Inoculated_seed_5C	Inoculated seed	Source	
+CS5-C-1-31	Seedling	Sink	1
+CS5-C-1-33	Seedling	Sink	2
+CS5-C-1-36	Seedling	Sink	3
+CS5-C-10-5	Seedling	Sink	4
+CS5-C-10-7	Seedling	Sink	5
+CS5-C-13-11	Seedling	Sink	6
+CS5-C-13-20	Seedling	Sink	7
+CS5-C-8-23	Seedling	Sink	8

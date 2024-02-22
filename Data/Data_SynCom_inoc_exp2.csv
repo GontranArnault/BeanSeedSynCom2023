@@ -1,0 +1,92 @@
+Sample_name;Sample;Sample_type;Category;  log_pop_sample  ;Unity
+8977;8977;Inoc_strain;8977; 7.7481880270062 ;log(UFC)/sample
+8977;8977;Inoc_strain;8977; 7.65127801399814 ;log(UFC)/sample
+8987;8987;Inoc_strain;8987;#VALEUR!;log(UFC)/sample
+8987;8987;Inoc_strain;8987; 8.15228834438306 ;log(UFC)/sample
+8988;8988;Inoc_strain;8988;#VALEUR!;log(UFC)/sample
+8988;8988;Inoc_strain;8988; 8.27875360095283 ;log(UFC)/sample
+8991;8991;Inoc_strain;8991;#VALEUR!;log(UFC)/sample
+8991;8991;Inoc_strain;8991; 8.07188200730613 ;log(UFC)/sample
+8992;8992;Inoc_strain;8992;#VALEUR!;log(UFC)/sample
+8992;8992;Inoc_strain;8992; 8.26481782300954 ;log(UFC)/sample
+8993;8993;Inoc_strain;8993;#VALEUR!;log(UFC)/sample
+8993;8993;Inoc_strain;8993; 8.34635297445064 ;log(UFC)/sample
+8994;8994;Inoc_strain;8994;#VALEUR!;log(UFC)/sample
+8994;8994;Inoc_strain;8994; 8.20411998265593 ;log(UFC)/sample
+8995;8995;Inoc_strain;8995;#VALEUR!;log(UFC)/sample
+8995;8995;Inoc_strain;8995; 8.04921802267018 ;log(UFC)/sample
+9003;9003;Inoc_strain;9003; 8.15836249209525 ;log(UFC)/sample
+9003;9003;Inoc_strain;9003; 8.27415784926368 ;log(UFC)/sample
+9012;9012;Inoc_strain;9012; 7.65321251377534 ;log(UFC)/sample
+9012;9012;Inoc_strain;9012; 8.32221929473392 ;log(UFC)/sample
+9014;9014;Inoc_strain;9014; 6.95424250943933 ;log(UFC)/sample
+9014;9014;Inoc_strain;9014; 6.56348108539441 ;log(UFC)/sample
+9019;9019;Inoc_strain;9019; 7.85733249643127 ;log(UFC)/sample
+9019;9019;Inoc_strain;9019; 7.72754125702856 ;log(UFC)/sample
+9020;9020;Inoc_strain;9020; 8.18752072083646 ;log(UFC)/sample
+9020;9020;Inoc_strain;9020; 8.12710479836481 ;log(UFC)/sample
+9023;9023;Inoc_strain;9023; 8.70243053644553 ;log(UFC)/sample
+9023;9023;Inoc_strain;9023; 8.67209785793572 ;log(UFC)/sample
+C8H;8;Inoc_SynCom; 8.24643604514154 ; 8.30535136944662 ;log(UFC)/sample
+C8H;8;Inoc_SynCom; 8.24643604514154 ; 8.18752072083646 ;log(UFC)/sample
+C7H;7;Inoc_SynCom; 6.81774187340745 ; 6.90308998699194 ;log(UFC)/sample
+C7H;7;Inoc_SynCom; 6.81774187340745 ; 6.73239375982297 ;log(UFC)/sample
+C6H;6;Inoc_SynCom; 5.37042083788636 ; 5.57978359661681 ;log(UFC)/sample
+C6H;6;Inoc_SynCom; 5.70614625466153 ; 5.83250891270624 ;log(UFC)/sample
+C5H;5;Inoc_SynCom; 4.65051499783199 ; 4.69897000433602 ;log(UFC)/sample
+C5H;5;Inoc_SynCom; 4.65051499783199 ; 4.60205999132796 ;log(UFC)/sample
+CS5g1;5;Soaked_seed;4.65051499783199; 4.7481880270062 ;log(UFC)/sample
+CS5g2;5;Soaked_seed;4.65051499783199; 5.13353890837022 ;log(UFC)/sample
+CS5g3;5;Soaked_seed;4.65051499783199; 4.96378782734556 ;log(UFC)/sample
+CS5g4;5;Soaked_seed;4.65051499783199; 5.13353890837022 ;log(UFC)/sample
+CS5g5;5;Soaked_seed;4.65051499783199; 5.22530928172586 ;log(UFC)/sample
+CS5g6;5;Soaked_seed;4.65051499783199; 5.30102999566398 ;log(UFC)/sample
+CS5g7;5;Soaked_seed;4.65051499783199; 5.14612803567824 ;log(UFC)/sample
+CS5g8;5;Soaked_seed;4.65051499783199; 5.13353890837022 ;log(UFC)/sample
+CS5g9;5;Soaked_seed;4.65051499783199; 5.15836249209525 ;log(UFC)/sample
+CS6g1;6;Soaked_seed;5.70614625466153; 5.76937732607614 ;log(UFC)/sample
+CS6g2;6;Soaked_seed;5.70614625466153; 5.94051648493257 ;log(UFC)/sample
+CS6g3;6;Soaked_seed;5.70614625466153; 5.96378782734556 ;log(UFC)/sample
+CS6g4;6;Soaked_seed;5.70614625466153; 6.26481782300954 ;log(UFC)/sample
+CS6g5;6;Soaked_seed;5.70614625466153; 6.14612803567824 ;log(UFC)/sample
+CS6g6;6;Soaked_seed;5.70614625466153; 6.42160392686983 ;log(UFC)/sample
+CS6g7;6;Soaked_seed;5.70614625466153; 6.47129171105894 ;log(UFC)/sample
+CS6g8;6;Soaked_seed;5.70614625466153; 6.01703333929878 ;log(UFC)/sample
+CS6g9;6;Soaked_seed;5.70614625466153; 6.40823996531185 ;log(UFC)/sample
+CS7g1;7;Soaked_seed;6.81774187340745; 7.01703333929878 ;log(UFC)/sample
+CS7g2;7;Soaked_seed;6.81774187340745; 7.18184358794477 ;log(UFC)/sample
+CS7g3;7;Soaked_seed;6.81774187340745; 7.23552844690755 ;log(UFC)/sample
+CS7g4;7;Soaked_seed;6.81774187340745; 7.3096301674259 ;log(UFC)/sample
+CS7g5;7;Soaked_seed;6.81774187340745; 7.2148438480477 ;log(UFC)/sample
+CS7g6;7;Soaked_seed;6.81774187340745; 7.37291200297011 ;log(UFC)/sample
+CS7g7;7;Soaked_seed;6.81774187340745; 7.51054501020661 ;log(UFC)/sample
+CS7g8;7;Soaked_seed;6.81774187340745; 7.44090908206522 ;log(UFC)/sample
+CS7g9;7;Soaked_seed;6.81774187340745; 7.72916478969277 ;log(UFC)/sample
+CS8g1;8;Soaked_seed;8.24643604514154; 7.98407703390283 ;log(UFC)/sample
+CS8g2;8;Soaked_seed;8.24643604514154; 7.93449845124357 ;log(UFC)/sample
+CS8g3;8;Soaked_seed;8.24643604514154; 7.84260923961056 ;log(UFC)/sample
+CS8g4;8;Soaked_seed;8.24643604514154; 7.96189547366785 ;log(UFC)/sample
+CS8g5;8;Soaked_seed;8.24643604514154; 7.90091306773767 ;log(UFC)/sample
+CS8g6;8;Soaked_seed;8.24643604514154; 8.10448711131239 ;log(UFC)/sample
+CS8g7;8;Soaked_seed;8.24643604514154; 7.94250410616808 ;log(UFC)/sample
+CS8g8;8;Soaked_seed;8.24643604514154; 7.9304395947667 ;log(UFC)/sample
+CS8g9;8;Soaked_seed;8.24643604514154; 8.01535975540921 ;log(UFC)/sample
+C0batch1;0;Soaked_seed;0;2;log(UFC)/sample
+C0batch2;0;Soaked_seed;0;2;log(UFC)/sample
+C0batch3;0;Soaked_seed;0;2;log(UFC)/sample
+TerreauJ0.1;SoilJ0;Soil;SoilJ0; 6.2148438480477 ;log(UFC)/gram
+TerreauJ0.2;SoilJ0;Soil;SoilJ0; 6.32221929473392 ;log(UFC)/gram
+TerreauJ0.3;SoilJ0;Soil;SoilJ0; 6.34242268082221 ;log(UFC)/gram
+TerreauJ0.4;SoilJ0;Soil;SoilJ0; 6.31806333496276 ;log(UFC)/gram
+TerreauJ8.1;SoilJ8;Soil;SoilJ8; 7.67209785793572 ;log(UFC)/gram
+TerreauJ8.2;SoilJ8;Soil;SoilJ8; 7.38738982633873 ;log(UFC)/gram
+TerreauJ8.3;SoilJ8;Soil;SoilJ8; 7.52113808370404 ;log(UFC)/gram
+TerreauJ8.4;SoilJ8;Soil;SoilJ8; 7.47129171105894 ;log(UFC)/gram
+TerreauJ8C0.1;SoilJ8_C0;Soil;SoilJ8_C0; 7.57749179983723 ;log(UFC)/gram
+TerreauJ8C0.2;SoilJ8_C0;Soil;SoilJ8_C0; 7.44715803134222 ;log(UFC)/gram
+TerreauJ8C0.3;SoilJ8_C0;Soil;SoilJ8_C0; 7.65127801399814 ;log(UFC)/gram
+TerreauJ8C0.4;SoilJ8_C0;Soil;SoilJ8_C0; 7.49415459401844 ;log(UFC)/gram
+TerreauJ8C6.1;SoilJ8_C6;Soil;SoilJ8_C6; 7.73239375982297 ;log(UFC)/gram
+TerreauJ8C6.2;SoilJ8_C6;Soil;SoilJ8_C6; 7.65321251377534 ;log(UFC)/gram
+TerreauJ8C6.3;SoilJ8_C6;Soil;SoilJ8_C6; 7.65896484266444 ;log(UFC)/gram
+TerreauJ8C6.4;SoilJ8_C6;Soil;SoilJ8_C6; 7.64738297011462 ;log(UFC)/gram

@@ -1,0 +1,63 @@
+LABELS
+#use this template to change the leaf labels, or define/change the internal node names (displayed in mouseover popups)
+
+#lines starting with a hash are comments and ignored during parsing
+
+#=================================================================#
+#                    MANDATORY SETTINGS                           #
+#=================================================================#
+#select the separator which is used to delimit the data below (TAB,SPACE or COMMA).This separator must be used throughout this file (except in the SEPARATOR line, which uses space).
+
+SEPARATOR TAB
+#SEPARATOR SPACE
+#SEPARATOR COMMA
+
+#Internal tree nodes can be specified using IDs directly, or using the 'last common ancestor' method described in iTOL help pages
+#=================================================================#
+#       Actual data follows after the "DATA" keyword              #
+#=================================================================#
+DATA
+#NODE_ID,LABEL
+
+#Examples
+#define a name for an internal node
+#9031|9606,Metazoa
+
+#change the label for leaf node 9606
+#9606,Homo sapiens
+V3S1_G5	Pseudomonas coleopterorum (8977)
+V4S1_B7	Lelliottia sp (8978)
+V4S2_C9	Pseudomonas syringae (8979)
+V2S1_D7	Stenotrophomonas sp (8980)
+V2S1_B4	Pseudomonas coleopterorum (8982)
+V1S2_E5	Pseudomonas viridiflava (8983)
+V1S2_A11	Pseudomonas putida group (8984)
+V4S2_B4	Pseudomonas viridiflava (8985)
+V3S2_H5	Kosakonia sp (8986)
+V4S1_D8	Leclercia sp (8987)
+V1S1_B10	Pantoea agglomerans (8988)
+V4S2_A9	Pantoea agglomerans (8989)
+V4S1_A7	Siccibacter turicensis (8990)
+V1S2_H5	Pseudomonas viridiflava (8991)
+V2S2_D7	Pseudomonas fluorescens subgroup (8992)
+V3S2_E8	Sphingomonas sp (8993)
+V2S1_G11	Stenotrophomonas sp (8994)
+V3S2_B9	Enterobacter sp (8995)
+V4S2_H9	Chryseobacterium sp (8996)
+V7S1_H7	Pseudomonas koreensis subgroup (9003)
+V5S1_C8	Stenotrophomonas rhizophila (9006)
+V8S1_G9	Bacillus sp (9009)
+V8S1_G10	Bacillus megaterium (9010)
+V6S2_D10	Curtobacterium sp (9011)
+V8S2_A9	Massilia sp (9012)
+V8S1_H8	Bacillus thuringiensis (9014)
+V6S1_B11	Sphingomonas sp (9019)
+V8S2_B12	Rhizobium sp (9020)
+V6S2_G11	Sphingomonas sp (9021)
+V8S2_E11	Microbacterium sp (9023)
+V3S2_F7	Massilia sp (9026)
+V1S2_H9	Frigoribacterium sp (9030)
+V4S2_A8	Pedobacter sp (9032)
+V3S1_H8	Rathayibacter festucae (9033)
+V4S2_E3	Microbacterium sp (9034)
+V8S2_B10	Frigoribacterium sp (9039)
